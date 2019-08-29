@@ -179,6 +179,10 @@ To build an exchange container with code that is targeted for a git branch:
     - If maxAgreements>1, for CS, in search don't return node to agbot if agbot from same org already has agreement for same service.
     - Consider changing all creates to POST, and update (via put/patch) return codes to 200
 
+## Changes in 1.107.1 (built only in the auth-cache branch so far)
+
+- Added GuavaCache for authentication artifacts
+
 ## Changes in 1.107.0
 
 - Implemented issue 204: made `nodes/{id}/errors` more flexible so anax can add whatever fields they want
@@ -195,10 +199,6 @@ To build an exchange container with code that is targeted for a git branch:
 - Msg file fixes
 - Upgradedb updates
 - Have scale scripts calculate the number of agreements each node HB
-
-## Changes in 1.104.0 (built only in the auth-cache branch)
-
-- Added GuavaCache for authentication artifacts
 
 ## Changes in 1.103.0
 
