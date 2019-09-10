@@ -132,7 +132,7 @@ class IbmCloudModule extends LoginModule with AuthorizationSupport {
     val creds = credentials(reqInfo)
     val (org, id) = IbmCloudAuth.compositeIdSplit(creds.id)
     if ((id == "iamapikey" || id == "iamtoken") && creds.token.nonEmpty) Success(IamAuthCredentials(org, id, creds.token))
-    else Failure(new NotIbmCredsException(ExchangeMessage.translateMessage("not.ibm.creds.exception")))
+    else Failure(new NotIbmCredsException)
   }
 }
 
