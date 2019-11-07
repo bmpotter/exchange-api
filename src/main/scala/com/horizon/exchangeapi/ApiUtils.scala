@@ -114,6 +114,7 @@ object ExchConfig {
       }
     }
 
+    // Note: currently there is no other value besides guava
     AuthCache.cacheType = config.getString("api.cache.type")  // need to do this before using the cache in the next step
     logger.info("Using cache type: "+AuthCache.cacheType)
 

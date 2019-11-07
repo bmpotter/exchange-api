@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory
  */
 class ExchangeApiApp(val db: Database)(implicit val swagger: Swagger) extends ScalatraServlet
     with FutureSupport with NativeJsonSupport with SwaggerSupport with CorsSupport with AuthenticationSupport with NodesRoutes with AgbotsRoutes with UsersRoutes with AdminRoutes with ServiceRoutes with PatternRoutes with OrgRoutes with BusinessRoutes with CatalogRoutes {
+    //with FutureSupport with NativeJsonSupport with SwaggerSupport with CorsSupport with AuthenticationSupport with UsersRoutes with OrgRoutes {
 
   /** Sets up automatic case class to JSON output serialization, required by the JValueResult trait. */
   protected implicit val jsonFormats: Formats = DefaultFormats

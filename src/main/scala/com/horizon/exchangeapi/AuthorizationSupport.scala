@@ -362,18 +362,11 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
         //else throw new InvalidCredentialsException("invalid token")  <- hint==token means it *could* be a token, not that it *must* be
       }
       //for ((k, v) <- AuthCache.users.things) { logger.debug("users cache entry: "+k+" "+v) }
-      if (AuthCache.useNew) {
-        AuthCache.ids.getValidType(creds) match {
-          case CacheIdType.User => return toIUser
-          case CacheIdType.Node => return toINode
-          case CacheIdType.Agbot => return toIAgbot
-          case CacheIdType.None => throw new InvalidCredentialsException() // will be caught by AuthenticationSupport.authenticate() and the proper halt() done
-        }
-      } else {
-        if (AuthCache.users.isValid(creds)) return toIUser
-        if (AuthCache.nodes.isValid(creds)) return toINode
-        if (AuthCache.agbots.isValid(creds)) return toIAgbot
-        throw new InvalidCredentialsException()   // will be caught by AuthenticationSupport.authenticate() and the proper halt() done
+      AuthCache.ids.getValidType(creds) match {
+        case CacheIdType.User => return toIUser
+        case CacheIdType.Node => return toINode
+        case CacheIdType.Agbot => return toIAgbot
+        case CacheIdType.None => throw new InvalidCredentialsException() // will be caught by AuthenticationSupport.authenticate() and the proper halt() done
       }
     }
 

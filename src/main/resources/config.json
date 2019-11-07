@@ -28,7 +28,7 @@
 			"resourcesMaxSize": 300,   // each of: users, agbots, services, patterns, policies
 			"resourcesTtlSeconds": 300,
 			"authDbTimeoutSeconds": 15,   // timeout for db access for critical auth info when cache missing
-			"type": "guava"    // either guava (default) or custom
+			"type": "guava"    // currently guava is the only option
 		},
 		"db": {
 			"driverClass": "org.postgresql.Driver",
