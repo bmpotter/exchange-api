@@ -1,21 +1,17 @@
 package exchangeapi
 
 //import com.horizon.exchangeapi.tables.APattern
-import com.horizon.exchangeapi.tables.{PServiceVersions, PServices}
 import org.scalatest.FunSuite
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import scalaj.http._
 import org.json4s._
-//import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 import org.json4s.native.Serialization.write
 import com.horizon.exchangeapi._
-//import com.horizon.exchangeapi.tables._
+//todo: restore: import com.horizon.exchangeapi.tables._
 import scala.collection.immutable._
-//import java.time._
 import java.util.Base64
-//import java.nio.charset.StandardCharsets
 
 /**
  * Tests for the /orgs and /orgs/"+orgid+"/users routes. To run
@@ -477,80 +473,6 @@ class UsersSuite extends FunSuite {
     assert(response.code === HttpCode.POST_OK)
   }
 
-    /** Does not currently work - Change the pw of user using a reset token, then confirm it, then set it back
-  test("POST /orgs/"+orgid+"/users/"+user+"/changepw") {
-    // Get a pw reset token, as root
-    var response = Http(URL+"/users/"+user+"/reset").method("post").headers(ACCEPT).headers(ROOTAUTH).option(CONNTIMEOUT).option(READTIMEOUT).asString
-    info("code: "+response.code+", response.body: "+response.body)
-    assert(response.code === HttpCode.POST_OK)
-    var postResetResp = parse(response.body).extract[ResetPwResponse]
-
-    // Change the pw with the token
-    var TOKENAUTH = ("Authorization","Basic "+orguser+":"+postResetResp.token)
-    val newpw = "new"+pw
-    var input = ChangePwRequest(newpw)
-    response = Http(URL+"/users/"+user+"/changepw").postData(write(input)).headers(CONTENT).headers(ACCEPT).headers(TOKENAUTH).asString
-    info("code: "+response.code+", response.body: "+response.body)
-    assert(response.code === HttpCode.POST_OK)
-    var postChangePwResp = parse(response.body).extract[ApiResponse]
-    assert(postChangePwResp.code === ApiResponseType.OK)
-
-    // Now confirm the new pw
-    val NEWAUTH = ("Authorization","Basic "+orguser+":"+newpw)
-    response = Http(URL+"/users/"+user+"/confirm").method("post").headers(ACCEPT).headers(NEWAUTH).asString
-    info("code: "+response.code+", response.body: "+response.body)
-    assert(response.code === HttpCode.POST_OK)
-    val postConfirmResp = parse(response.body).extract[ApiResponse]
-    assert(postConfirmResp.code === ApiResponseType.OK)
-
-    // Need another pw reset token, since the user's pw is different
-    response = Http(URL+"/users/"+user+"/reset").method("post").headers(ACCEPT).headers(ROOTAUTH).asString
-    info("code: "+response.code)
-    assert(response.code === HttpCode.POST_OK)
-    postResetResp = parse(response.body).extract[ResetPwResponse]
-
-    // Now set the pw back to original so it can be used for the rest of the tests
-    TOKENAUTH = ("Authorization","Basic "+orguser+":"+postResetResp.token)
-    input = ChangePwRequest(pw)
-    response = Http(URL+"/users/"+user+"/changepw").postData(write(input)).headers(CONTENT).headers(ACCEPT).headers(TOKENAUTH).asString
-    info("code: "+response.code+", response.body: "+response.body)
-    assert(response.code === HttpCode.POST_OK)
-    postChangePwResp = parse(response.body).extract[ApiResponse]
-    assert(postChangePwResp.code === ApiResponseType.OK)
-  }
-  */
-
-  /** Reset as anonymous does not work with orgs - Request a reset token be emailed
-  test("POST /orgs/"+orgid+"/users/"+user+"/reset - request email") {
-    // Change the email to one we do not mind spamming (and test a put with pw blank)
-    val spamEmail = sys.env.get("EXCHANGE_EMAIL2").orNull
-    if (spamEmail != null) {
-      val jsonInput = """{ "email": """"+spamEmail+"""" }"""
-      var response = Http(URL+"/users/"+user).postData(jsonInput).method("patch").headers(CONTENT).headers(ACCEPT).headers(USERAUTH).asString
-      info("code: "+response.code+", response.body: "+response.body)
-      assert(response.code === HttpCode.PUT_OK)
-
-      // verify the email was set and the pw was not
-      response = Http(URL+"/users/"+user).headers(ACCEPT).headers(USERAUTH).asString
-      info("code: "+response.code)
-      // info("code: "+response.code+", response.body: "+response.body)
-      assert(response.code === HttpCode.OK)
-      val getUserResp = parse(response.body).extract[GetUsersResponse]
-      assert(getUserResp.users.size === 1)
-      assert(getUserResp.users.contains(orguser))
-      val u = getUserResp.users(orguser) // the 2nd get turns the Some(val) into val
-      assert(u.email === spamEmail)
-
-      // Reset as anonymous does not work with orgs...
-      //response = Http(URL+"/users/"+user+"/reset").method("post").headers(ACCEPT).option(CONNTIMEOUT).option(READTIMEOUT).asString    // Note: no AUTH
-      //info("code: "+response.code+", response.body: "+response.body)
-      //assert(response.code === HttpCode.POST_OK)
-      //val postResetResp = parse(response.body).extract[ApiResponse]
-      //assert(postResetResp.code === ApiResponseType.OK)
-    } else info("NOTE: skipping pw reset email test because environment variable EXCHANGE_EMAIL2 is not set.")
-  }
-  */
-
   /** Delete this user so we can recreate it via root with put */
   test("DELETE /orgs/"+orgid+"/users/"+user) {
     val response = Http(URL+"/users/"+user).method("delete").headers(ACCEPT).headers(USERAUTH).asString
@@ -694,39 +616,14 @@ class UsersSuite extends FunSuite {
     assert(u.updatedBy.contentEquals("UsersSuiteTests/u1"))
   }
 
-  /* not supported anymore...
-  test("POST /orgs/public/users/"+user+" - create admin user as anonymous - should fail") {
-    val input = PostPutUsersRequest(pw, admin = true, user+"@hotmail.com")
-    val response = Http(NOORGURL+"/orgs/public/users/"+user).postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).asString    // as anonymous
-    info("code: "+response.code+", response.body: "+response.body)
-    assert(response.code === HttpCode.BAD_INPUT)
-  }
-
-  test("POST /orgs/public/users/"+user+" - create non-admin user as anonymous") {
-    val input = PostPutUsersRequest(pw, admin = false, user+"@hotmail.com")
-    val response = Http(NOORGURL+"/orgs/public/users/"+user).postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).asString    // as anonymous
-    info("code: "+response.code+", response.body: "+response.body)
-    assert(response.code === HttpCode.POST_OK)
-  }
-
-  test("GET /orgs/public/users/"+user+" - after anonymous created it") {
-    val response: HttpResponse[String] = Http(NOORGURL+"/orgs/public/users/"+user).headers(ACCEPT).headers(ROOTAUTH).asString
-    info("code: "+response.code)
-    // info("code: "+response.code+", response.body: "+response.body)
-    assert(response.code === HttpCode.OK)
-    val getUserResp = parse(response.body).extract[GetUsersResponse]
-    assert(getUserResp.users.size === 1)
-  }
-  */
-
-
-  /** Add a normal agbot */
+  /**todo: restore: Add a normal agbot
   test("PUT /orgs/"+orgid+"/agbots/"+agbotId+" - verify we can add an agbot as root") {
     val input = PutAgbotsRequest(agbotToken, "agbot"+agbotId+"-normal", None, "ABC")
     val response = Http(URL+"/agbots/"+agbotId).postData(write(input)).method("put").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.PUT_OK)
   }
+  */
 
 
   test("POST /orgs/"+orgid2+"/users/"+user+" - create user in org2 so we can test cross-org ACLs") {
@@ -756,6 +653,7 @@ class UsersSuite extends FunSuite {
     }
   }
 
+  /*todo: restore
   test("POST /orgs/"+orgid+"/services - add "+service+" as not public in 1st org") {
     val input = PostPutServiceRequest(svcBase+" arm", None, public = false, None, svcurl, svcversion, svcarch, "multiple", None, None, None, "", "", None)
     val response = Http(URL+"/services").postData(write(input)).method("post").headers(CONTENT).headers(ACCEPT).headers(USERAUTH).asString
@@ -848,6 +746,7 @@ class UsersSuite extends FunSuite {
     val respObj = parse(response.body).extract[GetPatternsResponse]
     assert(respObj.patterns.size === 1)
   }
+  */
 
   test("IAM login") {
     // these tests will perform authentication with IBM cloud and will only run
@@ -901,6 +800,7 @@ class UsersSuite extends FunSuite {
       info("code: "+response.code)
       assert(response.code === HttpCode.ACCESS_DENIED)
 
+      /*todo: restore
       // ensure we can add a service to check acls to other objects
       val inputSvc = PostPutServiceRequest("testSvc", Some("desc"), public = false, None, "s1", "1.2.3", "amd64", "single", None, None, None, "a","b",None)
       response = Http(URL+"/services").postData(write(inputSvc)).method("post").headers(CONTENT).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
@@ -912,16 +812,19 @@ class UsersSuite extends FunSuite {
       response = Http(URL+"/nodes/n1").postData(write(inputNode)).method("put").headers(CONTENT).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
       info("code: "+response.code+", response.body: "+response.body)
       assert(response.code === HttpCode.PUT_OK)
+      */
 
       // remove created user
       response = Http(URL+"/users/"+iamEmail).method("delete").headers(ACCEPT).headers(ROOTAUTH).asString
       info("DELETE "+iamEmail+", code: "+response.code+", response.body: "+response.body)
       assert(response.code === HttpCode.DELETED || response.code === HttpCode.NOT_FOUND)
 
+      /*todo: restore
       // clear auth cache
       response = Http(NOORGURL+"/admin/clearauthcaches").method("post").headers(ACCEPT).headers(ROOTAUTH).asString
       info("CLEAR CACHE code: "+response.code+", response.body: "+response.body)
       assert(response.code === HttpCode.POST_OK)
+      */
 
       // add ibmcloud_id to different org
       tagInput = s"""{ "tags": {"ibmcloud_id": "$iamAccount"} }"""
