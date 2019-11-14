@@ -34,7 +34,7 @@ case class UserRow(username: String, orgid: String, hashedPw: String, admin: Boo
 
 /** Mapping of the users db table to a scala class */
 class Users(tag: Tag) extends Table[UserRow](tag, "users") {
-  def username = column[String]("username", O.PrimaryKey)    // the content of this is orgid/username
+  def username = column[String]("username", O.PrimaryKey) // the content of this is orgid/username
   def orgid = column[String]("orgid")
   def password = column[String]("password")
   def admin = column[Boolean]("admin")
@@ -44,7 +44,7 @@ class Users(tag: Tag) extends Table[UserRow](tag, "users") {
   def updatedBy = column[String]("updatedby")
   def * = (username, orgid, password, admin, email, lastUpdated, updatedBy) <> (UserRow.tupled, UserRow.unapply)
   //def primKey = primaryKey("pk_pk", (username, orgid))
-  def orgidKey = foreignKey("orgid_fk", orgid, OrgsTQ.rows)(_.orgid, onUpdate=ForeignKeyAction.Cascade, onDelete=ForeignKeyAction.Cascade)
+  def orgidKey = foreignKey("orgid_fk", orgid, OrgsTQ.rows)(_.orgid, onUpdate = ForeignKeyAction.Cascade, onDelete = ForeignKeyAction.Cascade)
 }
 
 object UsersTQ {

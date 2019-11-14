@@ -2,17 +2,16 @@ package com.horizon.exchangeapi
 
 //import java.time.Clock
 
-import com.horizon.exchangeapi.auth.{AuthErrors, ExchCallbackHandler}
-import javax.security.auth.login.LoginContext
+//import com.horizon.exchangeapi.auth.{ AuthErrors, ExchCallbackHandler }
+//import javax.security.auth.login.LoginContext
 import org.mindrot.jbcrypt.BCrypt
-//import org.scalatra.servlet.ServletApiImplicits
-import org.scalatra.ScalatraBase
-import org.slf4j.Logger
-import pdi.jwt.{Jwt, JwtAlgorithm, JwtClaim}
-import slick.jdbc.PostgresProfile.api._
+//import org.scalatra.ScalatraBase
+//import org.slf4j.Logger
+import pdi.jwt.{ Jwt, JwtAlgorithm, JwtClaim }
+//import slick.jdbc.PostgresProfile.api._
 
-import scala.collection.JavaConverters._
-import scala.util._
+//import scala.collection.JavaConverters._
+//import scala.util._
 
 /* Used by all routes classes to Authenticates the client credentials and then checks the ACLs for authorization.
 The main authenticate/authorization flow is:
@@ -31,14 +30,15 @@ The main authenticate/authorization flow is:
         - AccessController.checkPermission()
           - i think this looks in resources/auth.policy at the roles and accesses defined for each
 */
+/*todo: restore
 trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
   // We could add a before action with before() {}, but sometimes they need to pass in user/pw, and sometimes id/token
   // I tried using code from http://www.scalatra.org/2.4/guides/http/authentication.html, but it throws an exception.
 
-  def db: Database      // get access to the db object in ExchangeApiApp
-  implicit def logger: Logger    // get access to the logger object in ExchangeApiApp
+  def db: Database // get access to the db object in ExchangeApiApp
+  implicit def logger: Logger // get access to the logger object in ExchangeApiApp
 
-  var migratingDb = false     // used to lock everyone out during db migration
+  var migratingDb = false // used to lock everyone out during db migration
   def isDbMigration = migratingDb
   // def setDbMigration(dbMigration: Boolean): Unit = { migratingDb = dbMigration }
 
@@ -53,20 +53,20 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
      * which LoginModules to use.
      */
     val loginCtx = new LoginContext(
-      "ExchangeApiLogin",  // this is referencing a stanza in resources/jaas.config
-      new ExchCallbackHandler(RequestInfo(request, params, isDbMigration, anonymousOk, hint))
-    )
+      "ExchangeApiLogin", // this is referencing a stanza in resources/jaas.config
+      new ExchCallbackHandler(RequestInfo(request, params, isDbMigration, anonymousOk, hint)))
     for (err <- Try(loginCtx.login()).failed) {
       // An auth exception, log it, then halt
       try {
-        val creds = getCredentials(request, params, anonymousOk)   // can throw InvalidCredentialsException
+        val creds = getCredentials(request, params, anonymousOk) // can throw InvalidCredentialsException
         val clientIp = request.header("X-Forwarded-For").orElse(Option(request.getRemoteAddr)).get // haproxy inserts the real client ip into the header for us
         //logger.trace("in AuthenticationSupport.authenticate: err="+err)
         val (httpCode, apiResponse, msg) = AuthErrors.message(err)
         logger.error("User or id " + creds.id + " from " + clientIp + " running " + request.getMethod + " " + request.getPathInfo + ": " + apiResponse + ": " + msg)
         halt(httpCode, ApiResponse(apiResponse, msg))
       } catch {
-        case e: Exception => val (httpCode, apiResponse, msg) = AuthErrors.message(e)
+        case e: Exception =>
+          val (httpCode, apiResponse, msg) = AuthErrors.message(e)
           halt(httpCode, ApiResponse(apiResponse, msg))
       }
     }
@@ -76,25 +76,25 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
 
   // Only used by unauthenticated (anonymous) rest api methods
   def credsAndLogForAnonymous() = {
-    val clientIp = request.header("X-Forwarded-For").orElse(Option(request.getRemoteAddr)).get      // haproxy inserts the real client ip into the header for us
+    val clientIp = request.header("X-Forwarded-For").orElse(Option(request.getRemoteAddr)).get // haproxy inserts the real client ip into the header for us
 
     val feCreds = frontEndCredsForAnonymous()
     if (feCreds != null) {
-      logger.info("User or id "+feCreds.id+" from "+clientIp+" (via front end) running "+request.getMethod+" "+request.getPathInfo)
+      logger.info("User or id " + feCreds.id + " from " + clientIp + " (via front end) running " + request.getMethod + " " + request.getPathInfo)
     }
     // else, fall thru to the next section
 
     // Get the creds from the header or params
     val creds = credsForAnonymous()
     val userOrId = if (creds.isAnonymous) "(anonymous)" else creds.id
-    logger.info("User or id "+userOrId+" from "+clientIp+" running "+request.getMethod+" "+request.getPathInfo)
+    logger.info("User or id " + userOrId + " from " + clientIp + " running " + request.getMethod + " " + request.getPathInfo)
     if (isDbMigration && !Role.isSuperUser(creds.id)) halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, ExchangeMessage.translateMessage("db.migration.in.progress")))
   }
 
   def frontEndCredsForAnonymous(): Creds = {
     val frontEndHeader = ExchConfig.config.getString("api.root.frontEndHeader")
     if (frontEndHeader == "" || request.getHeader(frontEndHeader) == null) return null
-    logger.trace("request.headers: "+request.headers.toString())
+    logger.trace("request.headers: " + request.headers.toString())
     //todo: For now the only front end we support is data power doing the authentication and authorization. Create a plugin architecture.
     // Data power calls us similar to: curl -u '{username}:{password}' 'https://{serviceURL}' -H 'type:{subjectType}' -H 'id:{username}' -H 'orgid:{org}' -H 'issuer:IBM_ID' -H 'Content-Type: application/json'
     // type: person (user logged into the dashboard), app (API Key), or dev (device/gateway)
@@ -102,11 +102,12 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
     val orgid = request.getHeader("orgid")
     val id = request.getHeader("id")
     if (id == null || orgid == null) halt(HttpCode.INTERNAL_ERROR, ApiResponse(ApiResponseType.INTERNAL_ERROR, ExchangeMessage.translateMessage("required.headers.not.set", frontEndHeader)))
-    val creds = Creds(OrgAndIdCred(orgid,id).toString, "")    // we don't have a pw/token, so leave it blank
+    val creds = Creds(OrgAndIdCred(orgid, id).toString, "") // we don't have a pw/token, so leave it blank
     return creds
   }
 
-  /** Looks in the http header and url params for credentials and returns them. Currently only used by credsAndLog(),
+  /**
+   * Looks in the http header and url params for credentials and returns them. Currently only used by credsAndLog(),
    * which is only used for unauthenticated (anonymous) APIs. Supported:
    * Basic auth in header in clear text: Authorization:Basic <user-or-id>:<pw-or-token>
    * Basic auth in header base64 encoded: Authorization:Basic <base64-encoded-of-above>
@@ -115,9 +116,10 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
    */
   def credsForAnonymous(): Creds = {
     try {
-      getCredentials(request, params, anonymousOk = true)   // can throw InvalidCredentialsException
+      getCredentials(request, params, anonymousOk = true) // can throw InvalidCredentialsException
     } catch {
-      case e: Exception => val (httpCode, apiResponse, msg) = AuthErrors.message(e)
+      case e: Exception =>
+        val (httpCode, apiResponse, msg) = AuthErrors.message(e)
         halt(httpCode, ApiResponse(apiResponse, msg))
     }
   }
@@ -126,29 +128,31 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
   def createToken(username: String): String = {
     // Get their current pw to use as the secret
     AuthCache.getUser(username) match {
-      case Some(userHashedTok) => Token.create(userHashedTok)   // always create the token with the hashed pw because that will always be there during creation and validation of the token
-      case None => ""    // this case will never happen (we always pass in superUser), but here to remove compile warning
+      case Some(userHashedTok) => Token.create(userHashedTok) // always create the token with the hashed pw because that will always be there during creation and validation of the token
+      case None => "" // this case will never happen (we always pass in superUser), but here to remove compile warning
     }
   }
 }
+*/
 
 /** Hash a password or token, and compare a pw/token to its hashed value */
 object Password {
   // Using jbcrypt, see https://github.com/jeremyh/jBCrypt and http://javadox.com/org.mindrot/jbcrypt/0.3m/org/mindrot/jbcrypt/BCrypt.html
-  val defaultLogRounds = 10      // hashes the pw 2**logRounds times
-  val minimumLogRounds = 4      // lowest brcypt will accept
+  val defaultLogRounds = 10 // hashes the pw 2**logRounds times
+  val minimumLogRounds = 4 // lowest brcypt will accept
 
-  /** Returns the hashed value of the given password or token. Lowest logRounds allowed is 4.
-    * Note: since BCrypt.hashpw() uses a different salt each time, 2 hashes of the same pw will be different. So it is not valid to hash the
-    *     clear pw specified by the user and compare it to the already-hashed pw in the db. You must use BCrypt.checkpw() instead.
-    */
+  /**
+   * Returns the hashed value of the given password or token. Lowest logRounds allowed is 4.
+   * Note: since BCrypt.hashpw() uses a different salt each time, 2 hashes of the same pw will be different. So it is not valid to hash the
+   *     clear pw specified by the user and compare it to the already-hashed pw in the db. You must use BCrypt.checkpw() instead.
+   */
   def hash(password: String): String = { BCrypt.hashpw(password, BCrypt.gensalt(defaultLogRounds)) }
 
   def fastHash(password: String): String = { BCrypt.hashpw(password, BCrypt.gensalt(minimumLogRounds)) }
 
   /** Returns true if plainPw matches hashedPw */
   def check(plainPw: String, hashedPw: String): Boolean = {
-    if ( hashedPw == "" ) return false    // this covers the case when the root user is disabled
+    if (hashedPw == "") return false // this covers the case when the root user is disabled
     BCrypt.checkpw(plainPw, hashedPw)
   }
 
@@ -167,14 +171,14 @@ object Password {
 /** Create and validate web tokens that expire */
 object Token {
   // From: https://github.com/pauldijou/jwt-scala
-  val defaultExpiration = 600     // seconds
+  val defaultExpiration = 600 // seconds
   val algorithm = JwtAlgorithm.HS256
 
   /** Returns a temporary pw reset token. */
   def create(secret: String, expiration: Int = defaultExpiration): String = {
     //implicit val clock: Clock = Clock.systemUTC()
     //Jwt.encode(JwtClaim({"""{"user":1}"""}).issuedNow.expiresIn(defaultExpiration), secret, algorithm)
-    Jwt.encode(JwtClaim({"""{"user":1}"""}).expiresAt(ApiTime.nowSeconds+expiration), secret, algorithm)
+    Jwt.encode(JwtClaim({ """{"user":1}""" }).expiresAt(ApiTime.nowSeconds + expiration), secret, algorithm)
   }
 
   /** Returns true if the token is correct for this secret and not expired */

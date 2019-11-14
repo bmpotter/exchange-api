@@ -1,7 +1,7 @@
 package com.horizon.exchangeapi.auth
 
-import com.horizon.exchangeapi.{ApiResponseType, ExchangeMessage, HttpCode}
-import javax.security.auth.login.{FailedLoginException, LoginException}
+import com.horizon.exchangeapi.{ ApiResponseType, ExchangeMessage, HttpCode }
+import javax.security.auth.login.{ FailedLoginException, LoginException }
 
 //
 class AuthException(var httpCode: Int, var apiResponse: String, msg: String) extends LoginException(msg)

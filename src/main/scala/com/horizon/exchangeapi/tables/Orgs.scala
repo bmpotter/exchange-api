@@ -6,11 +6,10 @@ import ExchangePostgresProfile.api._
 //import org.json4s.jackson.Serialization.read
 //import ExchangePostgresProfile.jsonMethods._
 
-
 /** Contains the object representations of the DB tables related to orgs. */
 
 case class OrgRow(orgId: String, orgType: String, label: String, description: String, lastUpdated: String, tags: Option[JValue]) {
-   protected implicit val jsonFormats: Formats = DefaultFormats
+  protected implicit val jsonFormats: Formats = DefaultFormats
 
   def toOrg: Org = {
     new Org(orgType, label, description, lastUpdated, tags.flatMap(_.extractOpt[Map[String, String]]))
@@ -51,7 +50,7 @@ object OrgsTQ {
   def getOrgidsOfType(orgType: String) = rows.filter(_.orgType === orgType).map(_.orgid)
 
   /** Returns a query for the specified org attribute value. Returns null if an invalid attribute name is given. */
-  def getAttribute(orgid: String, attrName: String): Query[_,_,Seq] = {
+  def getAttribute(orgid: String, attrName: String): Query[_, _, Seq] = {
     val filter = rows.filter(_.orgid === orgid)
     // According to 1 post by a slick developer, there is not yet a way to do this properly dynamically
     return attrName match {
@@ -65,7 +64,7 @@ object OrgsTQ {
   }
 
   /** Returns the actions to delete the org and the blockchains that reference it */
-  def getDeleteActions(orgid: String): DBIO[_] = getOrgid(orgid).delete   // with the foreign keys set up correctly and onDelete=cascade, the db will automatically delete these associated blockchain rows
+  def getDeleteActions(orgid: String): DBIO[_] = getOrgid(orgid).delete // with the foreign keys set up correctly and onDelete=cascade, the db will automatically delete these associated blockchain rows
 }
 
 // This is the org table minus the key - used as the data structure to return to the REST clients

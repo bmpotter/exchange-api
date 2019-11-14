@@ -20,10 +20,10 @@ trait ExchangePostgresProfile extends PostgresProfile
   trait API extends super.API with JsonImplicits {
     implicit val strListTypeMapper = new SimpleArrayJdbcType[String]("text").to(_.toList)
     implicit val json4sJsonArrayTypeMapper =
-      new AdvancedArrayJdbcType[JValue](pgjson,
+      new AdvancedArrayJdbcType[JValue](
+        pgjson,
         (s) => utils.SimpleArrayUtils.fromString[JValue](jsonMethods.parse(_))(s).orNull,
-        (v) => utils.SimpleArrayUtils.mkString[JValue](j=>jsonMethods.compact(jsonMethods.render(j)))(v)
-      ).to(_.toList)
+        (v) => utils.SimpleArrayUtils.mkString[JValue](j => jsonMethods.compact(jsonMethods.render(j)))(v)).to(_.toList)
   }
 }
 object ExchangePostgresProfile extends ExchangePostgresProfile

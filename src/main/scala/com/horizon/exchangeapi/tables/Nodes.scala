@@ -5,34 +5,35 @@ import org.json4s._
 import org.json4s.jackson.Serialization.read
 import slick.jdbc.PostgresProfile.api._
 
-import scala.collection.mutable.{ListBuffer, HashMap => MutableHashMap}   //renaming this so i do not have to qualify every use of a immutable collection
+import scala.collection.mutable.{ ListBuffer, HashMap => MutableHashMap } //renaming this so i do not have to qualify every use of a immutable collection
 
 /** We define this trait because services in the DB and in the search criteria need the same methods, but have slightly different constructor args */
 trait RegServiceTrait {
-  def url: String   // this is the composite org/svcurl
+  def url: String // this is the composite org/svcurl
   def properties: List[Prop]
 
   /** Returns an error msg if the user input is invalid. */
   def validate: Option[String] = {
     for (p <- properties) {
       p.validate match {
-        case Some(msg) => return Option[String](url+": "+msg)     // prepend the url so they know which service was bad
-        case None => ;      // continue checking
+        case Some(msg) => return Option[String](url + ": " + msg) // prepend the url so they know which service was bad
+        case None => ; // continue checking
       }
     }
-    return None     // this means it is valid
+    return None // this means it is valid
   }
 
-  /** Returns true if this service (the search) matches that service (an entry in the db)
-    * Rules for comparison:
-    * - if both parties do not have the same property names, it is as if wildcard was specified
-    */
+  /**
+   * Returns true if this service (the search) matches that service (an entry in the db)
+   * Rules for comparison:
+   * - if both parties do not have the same property names, it is as if wildcard was specified
+   */
   def matches(that: RegService): Boolean = {
     if (url != that.url) return false
     // go thru each of our props, finding and comparing the corresponding prop in that
     for (thatP <- that.properties) {
       properties.find(p => thatP.name == p.name) match {
-        case None => ;        // if the node does not specify this property, that is equivalent to it specifying wildcard
+        case None => ; // if the node does not specify this property, that is equivalent to it specifying wildcard
         case Some(p) => if (!p.matches(thatP)) return false
       }
     }
@@ -47,7 +48,7 @@ case class RegServiceSearch(url: String, properties: List[Prop]) extends RegServ
 case class RegService(url: String, numAgreements: Int, configState: Option[String], policy: String, properties: List[Prop]) extends RegServiceTrait
 
 // This is the node table minus the key - used as the data structure to return to the REST clients
-class Node(var token: String, var name: String, var owner: String, var pattern: String, var registeredServices: List[RegService], var userInput: List[OneUserInputService], var msgEndPoint: String, var softwareVersions: Map[String,String], var lastHeartbeat: String, var publicKey: String, var arch: String) {
+class Node(var token: String, var name: String, var owner: String, var pattern: String, var registeredServices: List[RegService], var userInput: List[OneUserInputService], var msgEndPoint: String, var softwareVersions: Map[String, String], var lastHeartbeat: String, var publicKey: String, var arch: String) {
   def copy = new Node(token, name, owner, pattern, registeredServices, userInput, msgEndPoint, softwareVersions, lastHeartbeat, publicKey, arch)
 }
 
@@ -56,15 +57,15 @@ case class NodeRow(id: String, orgid: String, token: String, name: String, owner
 
   def toNode(superUser: Boolean): Node = {
     val tok = if (superUser) token else StrConstants.hiddenPw
-    val swv = if (softwareVersions != "") read[Map[String,String]](softwareVersions) else Map[String,String]()
+    val swv = if (softwareVersions != "") read[Map[String, String]](softwareVersions) else Map[String, String]()
     val rsvc = if (regServices != "") read[List[RegService]](regServices) else List[RegService]()
     // Default new configState attr if it doesnt exist. This ends up being called by GET nodes, GET nodes/id, and POST search/nodes
-    val rsvc2 = rsvc.map(rs => RegService(rs.url,rs.numAgreements, rs.configState.orElse(Some("active")), rs.policy, rs.properties))
+    val rsvc2 = rsvc.map(rs => RegService(rs.url, rs.numAgreements, rs.configState.orElse(Some("active")), rs.policy, rs.properties))
     val input = if (userInput != "") read[List[OneUserInputService]](userInput) else List[OneUserInputService]()
     new Node(tok, name, owner, pattern, rsvc2, input, msgEndPoint, swv, lastHeartbeat, publicKey, arch)
   }
 
-  def putInHashMap(isSuperUser: Boolean, nodes: MutableHashMap[String,Node]): Unit = {
+  def putInHashMap(isSuperUser: Boolean, nodes: MutableHashMap[String, Node]): Unit = {
     nodes.get(id) match {
       case Some(_) => ; // do not need to add the node entry, because it is already there
       case None => nodes.put(id, toNode(isSuperUser))
@@ -79,32 +80,31 @@ case class NodeRow(id: String, orgid: String, token: String, name: String, owner
 
   def update: DBIO[_] = {
     //val tok = if (token == "") "" else if (Password.isHashed(token)) token else Password.hash(token)  <- token is already hashed
-    if (owner == "") (for { d <- NodesTQ.rows if d.id === id } yield (d.id,d.orgid,d.token,d.name,d.pattern,d.regServices,d.userInput,d.msgEndPoint,d.softwareVersions,d.lastHeartbeat,d.publicKey, d.arch)).update((id, orgid, token, name, pattern, regServices, userInput, msgEndPoint, softwareVersions, lastHeartbeat, publicKey, arch))
+    if (owner == "") (for { d <- NodesTQ.rows if d.id === id } yield (d.id, d.orgid, d.token, d.name, d.pattern, d.regServices, d.userInput, d.msgEndPoint, d.softwareVersions, d.lastHeartbeat, d.publicKey, d.arch)).update((id, orgid, token, name, pattern, regServices, userInput, msgEndPoint, softwareVersions, lastHeartbeat, publicKey, arch))
     else (for { d <- NodesTQ.rows if d.id === id } yield d).update(NodeRow(id, orgid, token, name, owner, pattern, regServices, userInput, msgEndPoint, softwareVersions, lastHeartbeat, publicKey, arch))
   }
 }
 
-
 /** Mapping of the nodes db table to a scala class */
 class Nodes(tag: Tag) extends Table[NodeRow](tag, "nodes") {
-  def id = column[String]("id", O.PrimaryKey)   // in the form org/nodeid
+  def id = column[String]("id", O.PrimaryKey) // in the form org/nodeid
   def orgid = column[String]("orgid")
   def token = column[String]("token")
   def name = column[String]("name")
-  def owner = column[String]("owner", O.Default(Role.superUser))  // root is the default because during upserts by root, we do not want root to take over the node if it already exists
-  def pattern = column[String]("pattern")       // this is orgid/patternname
+  def owner = column[String]("owner", O.Default(Role.superUser)) // root is the default because during upserts by root, we do not want root to take over the node if it already exists
+  def pattern = column[String]("pattern") // this is orgid/patternname
   def regServices = column[String]("regservices")
   def userInput = column[String]("userinput")
   def msgEndPoint = column[String]("msgendpoint")
   def softwareVersions = column[String]("swversions")
-  def publicKey = column[String]("publickey")     // this is last because that is where alter table in upgradedb puts it
+  def publicKey = column[String]("publickey") // this is last because that is where alter table in upgradedb puts it
   def lastHeartbeat = column[String]("lastheartbeat")
   def arch = column[String]("arch")
 
   // this describes what you get back when you return rows from a query
   def * = (id, orgid, token, name, owner, pattern, regServices, userInput, msgEndPoint, softwareVersions, lastHeartbeat, publicKey, arch) <> (NodeRow.tupled, NodeRow.unapply)
-  def user = foreignKey("user_fk", owner, UsersTQ.rows)(_.username, onUpdate=ForeignKeyAction.Cascade, onDelete=ForeignKeyAction.Cascade)
-  def orgidKey = foreignKey("orgid_fk", orgid, OrgsTQ.rows)(_.orgid, onUpdate=ForeignKeyAction.Cascade, onDelete=ForeignKeyAction.Cascade)
+  def user = foreignKey("user_fk", owner, UsersTQ.rows)(_.username, onUpdate = ForeignKeyAction.Cascade, onDelete = ForeignKeyAction.Cascade)
+  def orgidKey = foreignKey("orgid_fk", orgid, OrgsTQ.rows)(_.orgid, onUpdate = ForeignKeyAction.Cascade, onDelete = ForeignKeyAction.Cascade)
   //def patKey = foreignKey("pattern_fk", pattern, PatternsTQ.rows)(_.pattern, onUpdate=ForeignKeyAction.Cascade)     // <- we can't make this a foreign key because it is optional
 }
 
@@ -122,7 +122,7 @@ object NodesTQ {
     val svcRefs = ListBuffer[ServiceRef2]()
     // Go thru the services referenced in the userInput section
     for (s <- userInput) {
-      svcRefs += ServiceRef2(s.serviceUrl, s.serviceOrgid, s.serviceVersionRange.getOrElse("[0.0.0,INFINITY)"), s.serviceArch.getOrElse(""))  // the service ref is just for reporting bad input errors
+      svcRefs += ServiceRef2(s.serviceUrl, s.serviceOrgid, s.serviceVersionRange.getOrElse("[0.0.0,INFINITY)"), s.serviceArch.getOrElse("")) // the service ref is just for reporting bad input errors
       val arch = if (s.serviceArch.isEmpty || s.serviceArch.get == "") "%" else s.serviceArch.get
       //todo: the best we can do is use the version if the range is a single version, otherwise use %
       val svc = if (s.serviceVersionRange.getOrElse("") == "") "%"
@@ -134,11 +134,11 @@ object NodesTQ {
       val svcId = ServicesTQ.formId(s.serviceOrgid, s.serviceUrl, svc, arch)
       actions += ServicesTQ.getService(svcId).length.result
     }
-    return (DBIO.sequence(actions.toVector), svcRefs.toVector)      // convert the list of actions to a DBIO sequence
+    return (DBIO.sequence(actions.toVector), svcRefs.toVector) // convert the list of actions to a DBIO sequence
   }
 
   def getAllNodes(orgid: String) = rows.filter(_.orgid === orgid)
-  def getNonPatternNodes(orgid: String) = rows.filter(r => {r.orgid === orgid && r.pattern === ""})
+  def getNonPatternNodes(orgid: String) = rows.filter(r => { r.orgid === orgid && r.pattern === "" })
   def getNode(id: String) = rows.filter(_.id === id)
   def getToken(id: String) = rows.filter(_.id === id).map(_.token)
   def getOwner(id: String) = rows.filter(_.id === id).map(_.owner)
@@ -153,9 +153,8 @@ object NodesTQ {
 
   def setLastHeartbeat(id: String, lastHeartbeat: String) = rows.filter(_.id === id).map(_.lastHeartbeat).update(lastHeartbeat)
 
-
   /** Returns a query for the specified node attribute value. Returns null if an invalid attribute name is given. */
-  def getAttribute(id: String, attrName: String): Query[_,_,Seq] = {
+  def getAttribute(id: String, attrName: String): Query[_, _, Seq] = {
     val filter = rows.filter(_.id === id)
     // According to 1 post by a slick developer, there is not yet a way to do this properly dynamically
     return attrName match {
@@ -174,11 +173,13 @@ object NodesTQ {
     }
   }
 
-  /** Separate the join of the nodes and properties tables into their respective scala classes (collapsing duplicates) and return a hash containing it all.
-    * Note: this can also be used when querying node rows that have services, because the services are faithfully preserved in the Node object. */
-  def parseJoin(isSuperUser: Boolean, list: Seq[NodeRow] ): Map[String,Node] = {
+  /**
+   * Separate the join of the nodes and properties tables into their respective scala classes (collapsing duplicates) and return a hash containing it all.
+   * Note: this can also be used when querying node rows that have services, because the services are faithfully preserved in the Node object.
+   */
+  def parseJoin(isSuperUser: Boolean, list: Seq[NodeRow]): Map[String, Node] = {
     // Separate the partially duplicate join rows into maps that only keep unique values
-    val nodes = new MutableHashMap[String,Node]    // the key is node id
+    val nodes = new MutableHashMap[String, Node] // the key is node id
     for (d <- list) {
       d.putInHashMap(isSuperUser, nodes)
     }
@@ -186,7 +187,6 @@ object NodesTQ {
     nodes.toMap
   }
 }
-
 
 // Status is a sub-resource of node
 case class ContainerStatus(name: String, image: String, created: Int, state: String)
@@ -196,7 +196,7 @@ case class NodeStatusRow(nodeId: String, connectivity: String, services: String,
   protected implicit val jsonFormats: Formats = DefaultFormats
 
   def toNodeStatus: NodeStatus = {
-    val con = if (connectivity != "") read[Map[String,Boolean]](connectivity) else Map[String,Boolean]()
+    val con = if (connectivity != "") read[Map[String, Boolean]](connectivity) else Map[String, Boolean]()
     val svc = if (services != "") read[List[OneService]](services) else List[OneService]()
     return NodeStatus(con, svc, runningServices, lastUpdated)
   }
@@ -219,7 +219,7 @@ object NodeStatusTQ {
   def getNodeStatus(nodeId: String) = rows.filter(_.nodeId === nodeId)
 }
 
-case class NodeStatus(connectivity: Map[String,Boolean], services: List[OneService], runningServices: String, lastUpdated: String)
+case class NodeStatus(connectivity: Map[String, Boolean], services: List[OneService], runningServices: String, lastUpdated: String)
 
 //Node Errors
 // We are using the type Any instead of this case class so anax and the UI can change the fields w/o our code having to change
@@ -279,7 +279,6 @@ object NodePolicyTQ {
 
 case class NodePolicy(properties: List[OneProperty], constraints: List[String], lastUpdated: String)
 
-
 // Agreement is a sub-resource of node
 case class NAService(orgid: String, url: String)
 case class NAgrService(orgid: String, pattern: String, url: String)
@@ -299,8 +298,8 @@ case class NodeAgreementRow(agId: String, nodeId: String, services: String, agrS
 }
 
 class NodeAgreements(tag: Tag) extends Table[NodeAgreementRow](tag, "nodeagreements") {
-  def agId = column[String]("agid", O.PrimaryKey)     // agreement ids are unique
-  def nodeId = column[String]("nodeid")   // in the form org/nodeid
+  def agId = column[String]("agid", O.PrimaryKey) // agreement ids are unique
+  def nodeId = column[String]("nodeid") // in the form org/nodeid
   def services = column[String]("services")
   def agrSvcOrgid = column[String]("agrsvcorgid")
   def agrSvcPattern = column[String]("agrsvcpattern")
@@ -308,16 +307,16 @@ class NodeAgreements(tag: Tag) extends Table[NodeAgreementRow](tag, "nodeagreeme
   def state = column[String]("state")
   def lastUpdated = column[String]("lastUpdated")
   def * = (agId, nodeId, services, agrSvcOrgid, agrSvcPattern, agrSvcUrl, state, lastUpdated) <> (NodeAgreementRow.tupled, NodeAgreementRow.unapply)
-  def node = foreignKey("node_fk", nodeId, NodesTQ.rows)(_.id, onUpdate=ForeignKeyAction.Cascade, onDelete=ForeignKeyAction.Cascade)
+  def node = foreignKey("node_fk", nodeId, NodesTQ.rows)(_.id, onUpdate = ForeignKeyAction.Cascade, onDelete = ForeignKeyAction.Cascade)
 }
 
 object NodeAgreementsTQ {
   val rows = TableQuery[NodeAgreements]
 
   def getAgreements(nodeId: String) = rows.filter(_.nodeId === nodeId)
-  def getAgreement(nodeId: String, agId: String) = rows.filter( r => {r.nodeId === nodeId && r.agId === agId} )
+  def getAgreement(nodeId: String, agId: String) = rows.filter(r => { r.nodeId === nodeId && r.agId === agId })
   def getNumOwned(nodeId: String) = rows.filter(_.nodeId === nodeId).length
-  def getAgreementsWithState(orgid: String) = rows.filter( a => {(a.nodeId like orgid+"/%") && a.state =!= ""} )
+  def getAgreementsWithState(orgid: String) = rows.filter(a => { (a.nodeId like orgid + "/%") && a.state =!= "" })
 }
 
 case class NodeAgreement(services: List[NAService], agrService: NAgrService, state: String, lastUpdated: String)
@@ -327,22 +326,23 @@ class AgreementsHash(dbNodesAgreements: Seq[NodeAgreementRow]) {
   protected implicit val jsonFormats: Formats = DefaultFormats
 
   // The 1st level key of this hash is the node id, the 2nd level key is the service url, the leaf value is current number of agreements
-  var agHash = new MutableHashMap[String,MutableHashMap[String,Int]]()
+  var agHash = new MutableHashMap[String, MutableHashMap[String, Int]]()
 
   for (a <- dbNodesAgreements) {
     val svcs = a.getServices
     agHash.get(a.nodeId) match {
       case Some(nodeHash) => for (ms <- svcs) {
-        val svcurl = ms.orgid+"/"+ms.url
+        val svcurl = ms.orgid + "/" + ms.url
         val numAgs = nodeHash.get(svcurl) // node hash is there so find or create the service hashes within it
         numAgs match {
           case Some(numAgs2) => nodeHash.put(svcurl, numAgs2 + 1)
           case None => nodeHash.put(svcurl, 1)
         }
       }
-      case None => val nodeHash = new MutableHashMap[String, Int]() // this node is not in the hash yet, so create it and add the service hashes
+      case None =>
+        val nodeHash = new MutableHashMap[String, Int]() // this node is not in the hash yet, so create it and add the service hashes
         for (ms <- svcs) {
-          val svcurl = ms.orgid+"/"+ms.url
+          val svcurl = ms.orgid + "/" + ms.url
           nodeHash.put(svcurl, 1)
         }
         agHash += ((a.nodeId, nodeHash))
@@ -350,33 +350,32 @@ class AgreementsHash(dbNodesAgreements: Seq[NodeAgreementRow]) {
   }
 }
 
-
 /** The nodemsgs table holds the msgs sent to nodes by agbots */
 case class NodeMsgRow(msgId: Int, nodeId: String, agbotId: String, agbotPubKey: String, message: String, timeSent: String, timeExpires: String) {
   def toNodeMsg = NodeMsg(msgId, agbotId, agbotPubKey, message, timeSent, timeExpires)
 
-  def insert: DBIO[_] = ((NodeMsgsTQ.rows returning NodeMsgsTQ.rows.map(_.msgId)) += this)  // inserts the row and returns the msgId of the new row
-  def upsert: DBIO[_] = NodeMsgsTQ.rows.insertOrUpdate(this)    // do not think we need this
+  def insert: DBIO[_] = ((NodeMsgsTQ.rows returning NodeMsgsTQ.rows.map(_.msgId)) += this) // inserts the row and returns the msgId of the new row
+  def upsert: DBIO[_] = NodeMsgsTQ.rows.insertOrUpdate(this) // do not think we need this
 }
 
 class NodeMsgs(tag: Tag) extends Table[NodeMsgRow](tag, "nodemsgs") {
-  def msgId = column[Int]("msgid", O.PrimaryKey, O.AutoInc)    // this enables them to delete a msg and helps us deliver them in order
-  def nodeId = column[String]("nodeid")       // msg recipient
-  def agbotId = column[String]("agbotid")         // msg sender
+  def msgId = column[Int]("msgid", O.PrimaryKey, O.AutoInc) // this enables them to delete a msg and helps us deliver them in order
+  def nodeId = column[String]("nodeid") // msg recipient
+  def agbotId = column[String]("agbotid") // msg sender
   def agbotPubKey = column[String]("agbotpubkey")
   def message = column[String]("message")
   def timeSent = column[String]("timesent")
   def timeExpires = column[String]("timeexpires")
   def * = (msgId, nodeId, agbotId, agbotPubKey, message, timeSent, timeExpires) <> (NodeMsgRow.tupled, NodeMsgRow.unapply)
-  def node = foreignKey("node_fk", nodeId, NodesTQ.rows)(_.id, onUpdate=ForeignKeyAction.Cascade, onDelete=ForeignKeyAction.Cascade)
-  def agbot = foreignKey("agbot_fk", agbotId, AgbotsTQ.rows)(_.id, onUpdate=ForeignKeyAction.Cascade, onDelete=ForeignKeyAction.Cascade)
+  def node = foreignKey("node_fk", nodeId, NodesTQ.rows)(_.id, onUpdate = ForeignKeyAction.Cascade, onDelete = ForeignKeyAction.Cascade)
+  def agbot = foreignKey("agbot_fk", agbotId, AgbotsTQ.rows)(_.id, onUpdate = ForeignKeyAction.Cascade, onDelete = ForeignKeyAction.Cascade)
 }
 
 object NodeMsgsTQ {
   val rows = TableQuery[NodeMsgs]
 
-  def getMsgs(nodeId: String) = rows.filter(_.nodeId === nodeId)  // this is that nodes msg mailbox
-  def getMsg(nodeId: String, msgId: Int) = rows.filter( r => {r.nodeId === nodeId && r.msgId === msgId} )
+  def getMsgs(nodeId: String) = rows.filter(_.nodeId === nodeId) // this is that nodes msg mailbox
+  def getMsg(nodeId: String, msgId: Int) = rows.filter(r => { r.nodeId === nodeId && r.msgId === msgId })
   def getMsgsExpired = rows.filter(_.timeExpires < ApiTime.nowUTC)
   def getNumOwned(nodeId: String) = rows.filter(_.nodeId === nodeId).length
 }
@@ -391,13 +390,13 @@ case class Prop(name: String, value: String, propType: String, op: String) {
   def validate: Option[String] = {
     if (!PropType.contains(propType)) return Option[String](ExchangeMessage.translateMessage("invalid.proptype.for.name", propType, name))
     if (!Op.contains(op)) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name", op, name))
-    if (propType==PropType.BOOLEAN) {
-      if (op!=Op.EQUAL) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name.opequal", op, name, Op.EQUAL, PropType.BOOLEAN))
+    if (propType == PropType.BOOLEAN) {
+      if (op != Op.EQUAL) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name.opequal", op, name, Op.EQUAL, PropType.BOOLEAN))
       if (value.toLowerCase != "true" && value.toLowerCase != "false" && value != "*") return Option[String](ExchangeMessage.translateMessage("invalid.boolean.value.for.name", value, name))
     }
-    if ((propType==PropType.LIST || propType==PropType.STRING) && op!=Op.IN) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name.proplist", op, name, Op.IN, PropType.STRING, PropType.LIST))
-    if (propType==PropType.INT) {
-      if (op==Op.IN) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name", op, name))
+    if ((propType == PropType.LIST || propType == PropType.STRING) && op != Op.IN) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name.proplist", op, name, Op.IN, PropType.STRING, PropType.LIST))
+    if (propType == PropType.INT) {
+      if (op == Op.IN) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name", op, name))
       //      if (op==Op.IN) return Option[String]("invalid op '"+op+"' specified for "+name)
       if (value != "*") {
         // ensure its a valid integer number
@@ -405,9 +404,9 @@ case class Prop(name: String, value: String, propType: String, op: String) {
         catch { case _: Exception => return Option[String](ExchangeMessage.translateMessage("invalid.int.for.name", value, name)) }
       }
     }
-    if (propType==PropType.VERSION) {
-      if (!(op==Op.EQUAL || op==Op.IN)) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name.propversion", op, name, Op.EQUAL, Op.IN, PropType.VERSION))
-      if (value != "*") {       // verify it is a valid version or range format
+    if (propType == PropType.VERSION) {
+      if (!(op == Op.EQUAL || op == Op.IN)) return Option[String](ExchangeMessage.translateMessage("invalid.op.for.name.propversion", op, name, Op.EQUAL, Op.IN, PropType.VERSION))
+      if (value != "*") { // verify it is a valid version or range format
         if (!VersionRange(value).isValid) return Option[String](ExchangeMessage.translateMessage("invalid.version.for.name", value, name))
       }
     }
@@ -416,10 +415,10 @@ case class Prop(name: String, value: String, propType: String, op: String) {
 
   /** Returns true if this property (the search) matches that property (an entry in the db) */
   def matches(that: Prop): Boolean = {
-    if (name != that.name) return false     // comparison can only be done on the same name
-    if (op != that.op) return false         // comparison only makes sense if they both have the same operator
-    if (propType==PropType.WILDCARD || that.propType==PropType.WILDCARD) return true
-    if (value=="*" || that.value=="*") return true
+    if (name != that.name) return false // comparison can only be done on the same name
+    if (op != that.op) return false // comparison only makes sense if they both have the same operator
+    if (propType == PropType.WILDCARD || that.propType == PropType.WILDCARD) return true
+    if (value == "*" || that.value == "*") return true
     (propType, that.propType) match {
       case (PropType.BOOLEAN, PropType.BOOLEAN) => op match {
         case Op.EQUAL => return (value == that.value)
@@ -427,7 +426,7 @@ case class Prop(name: String, value: String, propType: String, op: String) {
       }
       // this will automatically transform a string into a list of strings
       case (PropType.LIST, PropType.LIST) | (PropType.STRING, PropType.LIST) | (PropType.LIST, PropType.STRING) | (PropType.STRING, PropType.STRING) => op match {
-        case Op.IN => return ( value.split(",").intersect(that.value.split(",")).length > 0 )
+        case Op.IN => return (value.split(",").intersect(that.value.split(",")).length > 0)
         case _ => return false
       }
       case (PropType.INT, PropType.INT) => op match {
@@ -456,7 +455,7 @@ object PropType {
   val VERSION = "version"
   val BOOLEAN = "boolean"
   val INT = "int"
-  val WILDCARD = "wildcard"       // means 1 side does not care what value the other side has
+  val WILDCARD = "wildcard" // means 1 side does not care what value the other side has
   val all = Set(STRING, LIST, VERSION, BOOLEAN, INT, WILDCARD)
   def contains(s: String): Boolean = all.contains(s)
 
@@ -468,6 +467,6 @@ object Op {
   val GTEQUAL = ">="
   val LTEQUAL = "<="
   val IN = "in"
-  val all = Set(EQUAL, GTEQUAL, LTEQUAL, IN )
+  val all = Set(EQUAL, GTEQUAL, LTEQUAL, IN)
   def contains(s: String): Boolean = all.contains(s)
 }

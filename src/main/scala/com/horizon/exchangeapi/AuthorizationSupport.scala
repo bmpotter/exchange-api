@@ -1,41 +1,43 @@
 package com.horizon.exchangeapi
 
+/*
 import java.util.Base64
 
 import com.horizon.exchangeapi.auth.InvalidCredentialsException
 import com.horizon.exchangeapi.auth.PermissionCheck
-import javax.security.auth.Subject
 import javax.servlet.http.HttpServletRequest
 import org.scalatra.servlet.ServletApiImplicits
 import org.scalatra.{Control, Params}
 import org.slf4j.Logger
 
 import scala.collection.JavaConverters._
+*/
+import javax.security.auth.Subject
 
 /** The list of access rights. */
 // Note: this list of access rights is duplicated in resources/auth.policy. Not sure how to avoid that.
 object Access extends Enumeration {
   type Access = Value
-  val READ = Value("READ")       // these 1st 3 are generic and will be changed to specific ones below based on the identity and target
-  val WRITE = Value("WRITE")       // implies READ and includes delete
+  val READ = Value("READ") // these 1st 3 are generic and will be changed to specific ones below based on the identity and target
+  val WRITE = Value("WRITE") // implies READ and includes delete
   val CREATE = Value("CREATE")
-  val READ_MYSELF = Value("READ_MYSELF")      // is used for users, nodes, agbots
+  val READ_MYSELF = Value("READ_MYSELF") // is used for users, nodes, agbots
   val WRITE_MYSELF = Value("WRITE_MYSELF")
-  val CREATE_NODE = Value("CREATE_NODE")       // we use WRITE_MY_NODES instead of this
-  val READ_MY_NODES = Value("READ_MY_NODES")     // when an node tries to do this it means other node owned by the same user, but i do not think this works
+  val CREATE_NODE = Value("CREATE_NODE") // we use WRITE_MY_NODES instead of this
+  val READ_MY_NODES = Value("READ_MY_NODES") // when an node tries to do this it means other node owned by the same user, but i do not think this works
   val WRITE_MY_NODES = Value("WRITE_MY_NODES")
   val READ_ALL_NODES = Value("READ_ALL_NODES")
   val WRITE_ALL_NODES = Value("WRITE_ALL_NODES")
   val SEND_MSG_TO_NODE = Value("SEND_MSG_TO_NODE")
-  val CREATE_AGBOT = Value("CREATE_AGBOT")       // we use WRITE_MY_AGBOTS instead of this
-  val READ_MY_AGBOTS = Value("READ_MY_AGBOTS")     // when an agbot tries to do this it means other agbots owned by the same user
+  val CREATE_AGBOT = Value("CREATE_AGBOT") // we use WRITE_MY_AGBOTS instead of this
+  val READ_MY_AGBOTS = Value("READ_MY_AGBOTS") // when an agbot tries to do this it means other agbots owned by the same user
   val WRITE_MY_AGBOTS = Value("WRITE_MY_AGBOTS")
   val READ_ALL_AGBOTS = Value("READ_ALL_AGBOTS")
   val WRITE_ALL_AGBOTS = Value("WRITE_ALL_AGBOTS")
   val DATA_HEARTBEAT_MY_AGBOTS = Value("DATA_HEARTBEAT_MY_AGBOTS")
   val SEND_MSG_TO_AGBOT = Value("SEND_MSG_TO_AGBOT")
   val CREATE_USER = Value("CREATE_USER")
-  val CREATE_SUPERUSER = Value("CREATE_SUPERUSER")       // currently no one is allowed to do this, because root is only initialized from the config.json file
+  val CREATE_SUPERUSER = Value("CREATE_SUPERUSER") // currently no one is allowed to do this, because root is only initialized from the config.json file
   val READ_ALL_USERS = Value("READ_ALL_USERS")
   val WRITE_ALL_USERS = Value("WRITE_ALL_USERS")
   val RESET_USER_PW = Value("RESET_USER_PW")
@@ -68,7 +70,7 @@ object Access extends Enumeration {
 
   val ALL_IN_ORG = Value("ALL_IN_ORG")
   val ALL = Value("ALL")
-  val NONE = Value("NONE")        // should not be put in any role below
+  val NONE = Value("NONE") // should not be put in any role below
 }
 import com.horizon.exchangeapi.Access._
 
@@ -91,9 +93,10 @@ sealed trait Authorization {
 case object FrontendAuth extends Authorization {
   override def as(subject: Subject): Unit = {}
 
-  override def specificAccessRequired = Access.NONE   // i think this should never be called
+  override def specificAccessRequired = Access.NONE // i think this should never be called
 }
 
+/*todo: restore
 case class RequiresAccess(specificAccess: Access) extends Authorization {
   override def as(subject: Subject): Unit = {
     Subject.doAsPrivileged(subject, PermissionCheck(specificAccess.toString), null)
@@ -101,6 +104,7 @@ case class RequiresAccess(specificAccess: Access) extends Authorization {
 
   override def specificAccessRequired = specificAccess
 }
+*/
 
 /** Who is allowed to do what. */
 object Role {
@@ -159,10 +163,10 @@ object Role {
   */
 
   def superUser = "root/root"
-  def isSuperUser(username: String): Boolean = return username == superUser    // only checks the username, does not verify the pw
+  def isSuperUser(username: String): Boolean = return username == superUser // only checks the username, does not verify the pw
 }
 
-case class Creds(id: String, token: String) {     // id and token are generic names and their values can actually be username and password
+case class Creds(id: String, token: String) { // id and token are generic names and their values can actually be username and password
   def isAnonymous: Boolean = (id == "" && token == "")
   //todo: add an optional hint to this so when they specify creds as username/password we know to try to authenticate as a user 1st
 }
@@ -173,7 +177,7 @@ case class OrgAndId(org: String, id: String) {
 
 // This class is separate from the one above, because when the id is for a cred, we want automatically add the org only when a different org is not there
 case class OrgAndIdCred(org: String, id: String) {
-  override def toString = if (org == "" || id.contains("/") || id.startsWith(Role.superUser)) id else org + "/" + id    // we only check for slash, because they could already have on a different org
+  override def toString = if (org == "" || id.contains("/") || id.startsWith(Role.superUser)) id else org + "/" + id // we only check for slash, because they could already have on a different org
 }
 
 case class CompositeId(compositeId: String) {
@@ -196,14 +200,15 @@ case class CompositeId(compositeId: String) {
   def split: (String, String) = {
     val reg = """^(\S*?)/(\S*)$""".r
     compositeId match {
-      case reg(org,id) => return (org,id)
-      case reg(org,_) => return (org,"")
-      case reg(_,id) => return ("",id)
+      case reg(org, id) => return (org, id)
+      case reg(org, _) => return (org, "")
+      case reg(_, id) => return ("", id)
       case _ => return ("", "")
     }
   }
 }
 
+/*todo: restore
 case class RequestInfo(
   request: HttpServletRequest,
   params: Params,
@@ -768,3 +773,4 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
   }
   case class TAction(id: String = "") extends Target    // for post rest api methods that do not target any specific resource (e.g. admin operations)
 }
+*/

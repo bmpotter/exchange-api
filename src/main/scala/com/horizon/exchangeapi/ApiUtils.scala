@@ -4,8 +4,8 @@ package com.horizon.exchangeapi
 import java.io.File
 import java.time._
 
-import com.horizon.exchangeapi.tables.{OrgRow, UserRow}
-import com.osinka.i18n.{Lang, Messages}
+import com.horizon.exchangeapi.tables.{ OrgRow, UserRow }
+import com.osinka.i18n.{ Lang, Messages }
 import com.typesafe.config._
 import org.json4s.JValue
 import slick.jdbc.PostgresProfile.api._
@@ -16,30 +16,29 @@ import scala.util._
 //import java.util
 import java.util.Properties
 
-import ch.qos.logback.classic.{Level, Logger}
+import ch.qos.logback.classic.{ Level, Logger }
 //import com.horizon.exchangeapi.tables._
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 
-
 /** HTTP codes, taken from https://en.wikipedia.org/wiki/List_of_HTTP_status_codes and https://www.restapitutorial.com/httpstatuscodes.html */
 object HttpCode {
   val OK = 200
   val PUT_OK = 201
   val POST_OK = 201
-  val DELETED = 204     // technically means no content, but usually used for DELETE
-  val BAD_INPUT = 400     // invalid user input, usually in the params or json body
-  val BADCREDS = 401    // user/pw or id/token is wrong (they call it unauthorized, but it is really unauthenticated)
-  val ACCESS_DENIED = 403   // do not have authorization to access this resource
-  val ALREADY_EXISTS = 403   // trying to create a resource that already exists. For now using 403 (forbidden), but could also use 409 (conflict)
-  val ALREADY_EXISTS2 = 409   // trying to create a resource that already exists (409 means conflict)
-  val NOT_FOUND = 404   // resource not found
+  val DELETED = 204 // technically means no content, but usually used for DELETE
+  val BAD_INPUT = 400 // invalid user input, usually in the params or json body
+  val BADCREDS = 401 // user/pw or id/token is wrong (they call it unauthorized, but it is really unauthenticated)
+  val ACCESS_DENIED = 403 // do not have authorization to access this resource
+  val ALREADY_EXISTS = 403 // trying to create a resource that already exists. For now using 403 (forbidden), but could also use 409 (conflict)
+  val ALREADY_EXISTS2 = 409 // trying to create a resource that already exists (409 means conflict)
+  val NOT_FOUND = 404 // resource not found
   val INTERNAL_ERROR = 500
   val NOT_IMPLEMENTED = 501
-  val BAD_GW = 502   // bad gateway, which for us means db connection error or jetty refused connection
-  val GW_TIMEOUT = 504   // gateway timeout, which for us means db timeout
+  val BAD_GW = 502 // bad gateway, which for us means db connection error or jetty refused connection
+  val GW_TIMEOUT = 504 // gateway timeout, which for us means db timeout
 }
 
 /** These are used as the response structure for most PUTs, POSTs, and DELETEs. */
@@ -63,10 +62,10 @@ object ApiResponseType {
 
 object ExchangeMessage {
   //TODO: Refactor translateMessage so that it doesn't need to determine Messages call based on size of args array
-  def translateMessage(key: String, args: Any*): String ={
+  def translateMessage(key: String, args: Any*): String = {
     implicit val userLang = Lang(sys.env.getOrElse("HZN_EXCHANGE_LANG", sys.env.getOrElse("LANG", "en")))
-    if(args.nonEmpty){
-      if(args.size == 1){
+    if (args.nonEmpty) {
+      if (args.size == 1) {
         return Messages(key, args(0))
       } else if (args.size == 2) {
         return Messages(key, args(0), args(1))
@@ -85,24 +84,24 @@ object ExchangeMessage {
 /** Global config parameters for the exchange. See typesafe config classes: http://typesafehub.github.io/config/latest/api/ */
 object ExchConfig {
   val configResourceName = "config.json"
-  val configFileName = "/etc/horizon/exchange/"+configResourceName
+  val configFileName = "/etc/horizon/exchange/" + configResourceName
   // The syntax called CONF is typesafe's superset of json that allows comments, etc. See https://github.com/typesafehub/config#using-hocon-the-json-superset. Strict json would be ConfigSyntax.JSON.
   val configOpts = ConfigParseOptions.defaults().setSyntax(ConfigSyntax.CONF).setAllowMissing(false)
-  var config = ConfigFactory.parseResources(configResourceName, configOpts)    // these are the default values, this file is bundled in the jar
-  val LOGGER = "EXCHANGE"    //or could use org.slf4j.Logger.ROOT_LOGGER_NAME
-  val logger: Logger = LoggerFactory.getLogger(LOGGER).asInstanceOf[Logger]     //todo: maybe add a custom layout that includes the date: http://logback.qos.ch/manual/layouts.html
+  var config = ConfigFactory.parseResources(configResourceName, configOpts) // these are the default values, this file is bundled in the jar
+  val LOGGER = "EXCHANGE" //or could use org.slf4j.Logger.ROOT_LOGGER_NAME
+  val logger: Logger = LoggerFactory.getLogger(LOGGER).asInstanceOf[Logger] //todo: maybe add a custom layout that includes the date: http://logback.qos.ch/manual/layouts.html
   // Maps log levels expressed as strings in the config file to the slf4j log level enums
-  val levels: Map[String,Level] = Map("OFF"->Level.OFF, "ERROR"->Level.ERROR, "WARN"->Level.WARN, "INFO"->Level.INFO, "DEBUG"->Level.DEBUG, "TRACE"->Level.TRACE, "ALL"->Level.ALL)
-  var rootHashedPw = ""   // so we can remember the hashed pw between load() and createRoot()
+  val levels: Map[String, Level] = Map("OFF" -> Level.OFF, "ERROR" -> Level.ERROR, "WARN" -> Level.WARN, "INFO" -> Level.INFO, "DEBUG" -> Level.DEBUG, "TRACE" -> Level.TRACE, "ALL" -> Level.ALL)
+  var rootHashedPw = "" // so we can remember the hashed pw between load() and createRoot()
 
   /** Tries to load the user's external config file */
   def load(): Unit = {
     val f = new File(configFileName)
-    if (f.isFile) {     // checks if it exists and is a regular file
-      config = ConfigFactory.parseFile(f, configOpts).withFallback(config)    // uses the defaults for anything not specified in the external config file
-      logger.info("Using config file "+configFileName)
+    if (f.isFile) { // checks if it exists and is a regular file
+      config = ConfigFactory.parseFile(f, configOpts).withFallback(config) // uses the defaults for anything not specified in the external config file
+      logger.info("Using config file " + configFileName)
     } else {
-      logger.info("Config file "+configFileName+" not found. Running with defaults suitable for local development.")
+      logger.info("Config file " + configFileName + " not found. Running with defaults suitable for local development.")
     }
 
     // Set the logging level if specified
@@ -110,13 +109,13 @@ object ExchConfig {
     if (loglev != "") {
       levels.get(loglev) match {
         case Some(level) => logger.setLevel(level)
-        case None => logger.error("Invalid logging level '"+loglev+"' specified in config.json. Continuing with the default logging level.")
+        case None => logger.error("Invalid logging level '" + loglev + "' specified in config.json. Continuing with the default logging level.")
       }
     }
 
     // Note: currently there is no other value besides guava
-    AuthCache.cacheType = config.getString("api.cache.type")  // need to do this before using the cache in the next step
-    logger.info("Using cache type: "+AuthCache.cacheType)
+    AuthCache.cacheType = config.getString("api.cache.type") // need to do this before using the cache in the next step
+    logger.info("Using cache type: " + AuthCache.cacheType)
 
     createRootInCache()
   }
@@ -133,15 +132,17 @@ object ExchConfig {
       // this is the 1st time, we need to hash and save it
       rootHashedPw = Password.hashIfNot(rootpw)
     }
-    val rootUnhashedPw = if (Password.isHashed(rootpw)) "" else rootpw    // this is the 1 case in which an id cache entry could end up with a blank unhashed pw/tok
+    val rootUnhashedPw = if (Password.isHashed(rootpw)) "" else rootpw // this is the 1 case in which an id cache entry could end up with a blank unhashed pw/tok
     AuthCache.putUser(Role.superUser, rootHashedPw, rootUnhashedPw)
     logger.info("Root user from config.json added to the in-memory authentication cache")
   }
 
   def reload(): Unit = load()
 
-  /** Set a few values on top of the current config. These values are not saved persistently, and therefore will only set it in this 1 exchange instance,
-   * and therefore will *not* work when the exchange is running in multi-node config. This method is used mostly for automated testing. */
+  /**
+   * Set a few values on top of the current config. These values are not saved persistently, and therefore will only set it in this 1 exchange instance,
+   * and therefore will *not* work when the exchange is running in multi-node config. This method is used mostly for automated testing.
+   */
   def mod(props: Properties): Unit = { config = ConfigFactory.parseProperties(props).withFallback(config) }
 
   /** Create the root user in the DB. This is done separately from load() because we need the db execution context */
@@ -150,33 +151,33 @@ object ExchConfig {
     val rootpw = config.getString("api.root.password")
     val rootIsEnabled = config.getBoolean("api.root.enabled")
     if (rootpw == "" || !rootIsEnabled) {
-      rootHashedPw = ""     // this should already be true, but just make sure
-    } else {    // there is a real, enabled root pw
+      rootHashedPw = "" // this should already be true, but just make sure
+    } else { // there is a real, enabled root pw
       //val hashedPw = Password.hashIfNot(rootpw)  <- can't hash this again, because it would be different
       if (rootHashedPw == "") logger.error("Internal Error: rootHashedPw not already set")
-      val rootUnhashedPw = if (Password.isHashed(rootpw)) "" else rootpw    // this is the 1 case in which an id cache entry could not have an unhashed pw/tok
-      AuthCache.putUser(Role.superUser, rootHashedPw, rootUnhashedPw)    // put it in AuthCache even if it does not get successfully written to the db, so we have a chance to fix it
+      val rootUnhashedPw = if (Password.isHashed(rootpw)) "" else rootpw // this is the 1 case in which an id cache entry could not have an unhashed pw/tok
+      AuthCache.putUser(Role.superUser, rootHashedPw, rootUnhashedPw) // put it in AuthCache even if it does not get successfully written to the db, so we have a chance to fix it
     }
     // Put the root org and user in the db, even if root is disabled (because in that case we want all exchange instances to know the root pw is blank
     val rootemail = config.getString("api.root.email")
     // Create the root org, create the IBM org, and create the root user (all only if necessary)
     db.run(OrgRow("root", "", "Root Org", "Organization for the root user only", ApiTime.nowUTC, None).upsert.asTry.flatMap({ xs =>
-      logger.debug("Upsert /orgs/root result: "+xs.toString)
+      logger.debug("Upsert /orgs/root result: " + xs.toString)
       xs match {
-        case Success(_) => UserRow(Role.superUser, "root", rootHashedPw, admin = true, rootemail, ApiTime.nowUTC, Role.superUser).upsertUser.asTry    // next action
+        case Success(_) => UserRow(Role.superUser, "root", rootHashedPw, admin = true, rootemail, ApiTime.nowUTC, Role.superUser).upsertUser.asTry // next action
         case Failure(t) => DBIO.failed(t).asTry // rethrow the error to the next step
       }
     }).flatMap({ xs =>
-      logger.debug("Upsert /orgs/root/users/root (root) result: "+xs.toString)
+      logger.debug("Upsert /orgs/root/users/root (root) result: " + xs.toString)
       xs match {
-        case Success(_) => OrgRow("IBM", "IBM", "IBM Org", "Organization containing IBM services", ApiTime.nowUTC, None).upsert.asTry    // next action
+        case Success(_) => OrgRow("IBM", "IBM", "IBM Org", "Organization containing IBM services", ApiTime.nowUTC, None).upsert.asTry // next action
         case Failure(t) => DBIO.failed(t).asTry // rethrow the error to the next step
       }
     })).map({ xs =>
-      logger.debug("Upsert /orgs/IBM result: "+xs.toString)
+      logger.debug("Upsert /orgs/IBM result: " + xs.toString)
       xs match {
         case Success(_) => logger.info("Root org and user from config.json was successfully created/updated in the DB")
-        case Failure(t) => logger.error("Failed to write the root user from config.json to the DB: "+t.toString)
+        case Failure(t) => logger.error("Failed to write the root user from config.json to the DB: " + t.toString)
       }
     })
   }
@@ -214,18 +215,18 @@ object ApiTime {
   def futureUTC(secondsFromNow: Int) = ZonedDateTime.now.plusSeconds(secondsFromNow).withZoneSameInstant(ZoneId.of("UTC")).toString
 
   /** Return UTC format of unix begin time */
-  def beginningUTC = ZonedDateTime.of(1970,1,1,0,0,0,0,ZoneId.of("UTC")).toString
+  def beginningUTC = ZonedDateTime.of(1970, 1, 1, 0, 0, 0, 0, ZoneId.of("UTC")).toString
 
   /** Returns now in epoch seconds */
-  def nowSeconds: Long = System.currentTimeMillis / 1000     // seconds since 1/1/1970
+  def nowSeconds: Long = System.currentTimeMillis / 1000 // seconds since 1/1/1970
 
   /** Returns now as a java.sql.Timestamp */
   def nowTimestamp = new java.sql.Timestamp(System.currentTimeMillis())
 
   /** Determines if the given UTC time is more than daysStale old */
   def isDaysStale(UTC: String, daysStale: Int): Boolean = {
-    if (daysStale <= 0) return false      // they did not specify what was too stale
-    if (UTC == "") return true       // assume an empty UTC is the beginning of time
+    if (daysStale <= 0) return false // they did not specify what was too stale
+    if (UTC == "") return true // assume an empty UTC is the beginning of time
     val secondsInDay = 86400
     val thenTime = ZonedDateTime.parse(UTC).toEpochSecond
     return (nowSeconds - thenTime >= daysStale * secondsInDay)
@@ -233,8 +234,8 @@ object ApiTime {
 
   /** Determines if the given UTC time is more than secondsStale old */
   def isSecondsStale(UTC: String, secondsStale: Int): Boolean = {
-    if (secondsStale <= 0) return false      // they did not specify what was too stale
-    if (UTC == "") return true       // assume an empty UTC is the beginning of time
+    if (secondsStale <= 0) return false // they did not specify what was too stale
+    if (UTC == "") return true // assume an empty UTC is the beginning of time
     val thenTime = ZonedDateTime.parse(UTC).toEpochSecond
     return (nowSeconds - thenTime >= secondsStale)
   }
@@ -258,9 +259,9 @@ case class Version(version: String) {
   // the == operator calls equals()
   override def equals(that: Any): Boolean = that match {
     case that: Version => if (!isValid || !that.isValid) return false
-      else if (that.isInfinity && isInfinity) return true
-      else if (that.isInfinity || isInfinity) return false
-      else return that.major==major && that.minor==minor && that.mod==mod
+    else if (that.isInfinity && isInfinity) return true
+    else if (that.isInfinity || isInfinity) return false
+    else return that.major == major && that.minor == minor && that.mod == mod
     case _ => return false
   }
 
@@ -283,7 +284,7 @@ case class Version(version: String) {
 
   override def toString: String = {
     if (isInfinity) "infinity"
-    else ""+major+"."+minor+"."+mod
+    else "" + major + "." + minor + "." + mod
   }
 }
 
@@ -307,16 +308,16 @@ case class VersionRange(range: String) {
   val R1 = """([\[\(]?)(\d.*)""".r
   val (floorInclusive, floor) = firstPart match {
     case "" => (true, Version("0.0.0"))
-    case R1(i,f) => ((i != "("), Version(f))
-    case _ => (false, Version("x"))         // Version("x") is just an invalid version object
+    case R1(i, f) => ((i != "("), Version(f))
+    case _ => (false, Version("x")) // Version("x") is just an invalid version object
   }
   // separate the version number from the trailing ] or )
   val R2 = """(.*\d)([\]\)]?)""".r
   val R3 = """(infinity)([\]\)]?)""".r
   val (ceiling, ceilingInclusive) = secondPart match {
     // case "" => (Version("infinity"), false)
-    case R2(c,i) => (Version(c), (i == "]"))
-    case R3(c,i) => (Version(c), (i == "]"))
+    case R2(c, i) => (Version(c), (i == "]"))
+    case R3(c, i) => (Version(c), (i == "]"))
     case _ => (Version("x"), true)
   }
 

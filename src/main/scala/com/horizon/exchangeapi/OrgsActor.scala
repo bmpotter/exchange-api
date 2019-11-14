@@ -5,82 +5,114 @@ package com.horizon.exchangeapi
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.json4s.jackson.Serialization.write
-import com.horizon.exchangeapi.tables._
+import org.slf4j._
+import scala.util._
 //import org.scalatra._
 //import org.scalatra.swagger._
-import org.slf4j._
-import com.horizon.exchangeapi.tables.ExchangePostgresProfile.api._
-
-import scala.collection.immutable._
-import scala.collection.mutable.{HashMap => MutableHashMap}
-import scala.util._
 //import java.net._
 */
 
-//import com.horizon.exchangeapi.tables._
+import scala.collection._
+//import scala.collection.immutable._
+//import scala.collection.mutable.{ HashMap => MutableHashMap }
+import com.horizon.exchangeapi.tables._
+import com.horizon.exchangeapi.tables.ExchangePostgresProfile.api._
+import akka.actor.{ Actor, ActorLogging, Props }
+//import org.json4s.{ DefaultFormats, Formats }
 
-import akka.actor.{ ActorRef, ActorSystem }
-import akka.event.Logging
+import scala.concurrent.ExecutionContext
 
-import scala.concurrent.duration._
-import akka.http.scaladsl.server.Directives._
-//import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.server.Route
-//import akka.http.scaladsl.server.directives.MethodDirectives.delete
-import akka.http.scaladsl.server.directives.MethodDirectives.get
-//import akka.http.scaladsl.server.directives.MethodDirectives.post
-import akka.http.scaladsl.server.directives.RouteDirectives.complete
-import akka.http.scaladsl.server.directives.PathDirectives.path
+//====== These are the input and output structures for /orgs routes. Swagger and/or json seem to require they be outside the trait.
 
-import scala.concurrent.Future
-import com.horizon.exchangeapi.OrgsActor._
-import akka.pattern.ask
-import akka.util.Timeout
+/** Output format for GET /orgs */
+final case class TmpOrg(orgType: String, label: String, description: String, lastUpdated: String)
+final case class TmpOrgs(orgs: Seq[TmpOrg])
 
-/** Routes for /orgs */
-trait OrgsRoutes extends JsonSupport {
-  //def db: Database = ExchangeDatabase.db     // get access to the db object
+final case class GetOrgsResponse(orgs: Map[String, Org], lastIndex: Int) {
+  //def toTmpOrgs = TmpOrgs(orgs.values.map(v => TmpOrg(v.orgType, v.label, v.description, v.lastUpdated)).to[collection.immutable.Seq])
+  def toTmpOrgs = TmpOrgs(orgs.values.map(v => TmpOrg(v.orgType, v.label, v.description, v.lastUpdated)).toSeq)
+}
+final case class GetOrgAttributeResponse(attribute: String, value: String)
+
+/*todo: restore
+/** Input format for PUT /orgs/<org-id> */
+final case class PostPutOrgRequest(orgType: Option[String], label: String, description: String, tags: Option[Map[String, String]]) {
+  protected implicit val jsonFormats: Formats = DefaultFormats
+  def validate() = {}
+
+  def toOrgRow(orgId: String) = OrgRow(orgId, orgType.getOrElse(""), label, description, ApiTime.nowUTC, tags.map(ts => ApiJsonUtil.asJValue(ts)))
+}
+
+final case class PatchOrgRequest(orgType: Option[String], label: Option[String], description: Option[String], tags: Option[Map[String, Option[String]]]) {
+  protected implicit val jsonFormats: Formats = DefaultFormats
+
+  /** Returns a tuple of the db action to update parts of the org, and the attribute name being updated. */
+  def getDbUpdate(orgId: String): (DBIO[_], String) = {
+    import com.horizon.exchangeapi.tables.ExchangePostgresProfile.plainAPI._
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val lastUpdated = ApiTime.nowUTC
+    //todo: support updating more than 1 attribute
+    // find the 1st attribute that was specified in the body and create a db action to update it for this org
+    orgType match { case Some(ot) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.orgType, d.lastUpdated)).update((orgId, ot, lastUpdated)), "orgType"); case _ => ; }
+    label match { case Some(lab) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.label, d.lastUpdated)).update((orgId, lab, lastUpdated)), "label"); case _ => ; }
+    description match { case Some(desc) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.description, d.lastUpdated)).update((orgId, desc, lastUpdated)), "description"); case _ => ; }
+    tags match {
+      case Some(ts) =>
+        val (deletes, updates) = ts.partition {
+          case (_, v) => v.isEmpty
+        }
+        val dbUpdates =
+          if (updates.isEmpty) Seq()
+          else Seq(sqlu"update orgs set tags = coalesce(tags, '{}'::jsonb) || ${ApiJsonUtil.asJValue(updates)} where orgid = $orgId")
+
+        val dbDeletes =
+          for (tag <- deletes.keys.toSeq) yield {
+            sqlu"update orgs set tags = tags - $tag where orgid = $orgId"
+          }
+        val allChanges = dbUpdates ++ dbDeletes
+        return (DBIO.sequence(allChanges).map(counts => counts.sum), "tags")
+      case _ =>
+    }
+    return (null, null)
+  }
+}
+*/
+
+/**
+ * Implementation for all of the /orgs routes
+ * Note: there is a lose coupling between OrgsRoutes and OrgsActor so that OrgsActor can be on a different server.
+ */
+
+object OrgsActor {
+  // These case objects/classes provide a type for each route that can be matched on in the OrgsActor.receive() case stmt
+  //final case class ActionPerformed(description: String)
+  final case object GetOrgs
+  //final case class CreateUser(user: User)
+  //final case class GetUser(name: String)
+  //final case class DeleteUser(name: String)
+
+  def props: Props = Props[OrgsActor] // returns a "creator" function for OrgsActor (among other things)
+}
+
+//trait OrgRoutes extends ScalatraBase with FutureSupport with SwaggerSupport with AuthenticationSupport {
+class OrgsActor extends Actor with ActorLogging {
+  import OrgsActor._
+
+  def db: Database = ExchangeApiApp.getDb //todo: eventually may need to be more flexible in getting this, when the actor is on a different svr
+
+  //implicit val executionContext: ExecutionContext = context.system.dispatcher
+  implicit val executionContext: ExecutionContext = context.dispatcher
   //def logger: Logger    // get access to the logger object in ExchangeApiApp
   //protected implicit def jsonFormats: Formats
 
-  // we leave these abstract, since they will be provided by the App
-  implicit def system: ActorSystem
-
-  lazy val log = Logging(system, classOf[OrgsRoutes])
-
-  def orgsActor: ActorRef // this comes from ExchangeApiApp
-
-  // Required by the `ask` (?) method below
-  implicit lazy val timeout = Timeout(5.seconds) //todo: get this from the system's configuration
-
-  val orgsRoutes: Route = orgsGetRoute
-
-  // ====== GET /orgs ================================
-  /*
-  val getOrgs =
-    (apiOperation[GetOrgsResponse]("getOrgs")
-      summary("Returns all orgs")
-      description("""Returns some or all org definitions in the exchange DB. Can be run by any user if filter orgType=IBM is used, otherwise can only be run by the root user.""")
-      parameters(
-        Parameter("id", DataType.String, Option[String]("Username of exchange user, or ID of the node or agbot. This parameter can also be passed in the HTTP Header."), paramType=ParamType.Query, required=false),
-        Parameter("token", DataType.String, Option[String]("Password of exchange user, or token of the node or agbot. This parameter can also be passed in the HTTP Header."), paramType=ParamType.Query, required=false),
-        Parameter("orgtype", DataType.String, Option[String]("Filter results to only include orgs with this org type. A common org type is 'IBM'."), paramType=ParamType.Query, required=false),
-        Parameter("label", DataType.String, Option[String]("Filter results to only include orgs with this label (can include % for wildcard - the URL encoding for % is %25)"), paramType=ParamType.Query, required=false)
-        )
-      responseMessages(ResponseMessage(HttpCode.BADCREDS,"invalid credentials"), ResponseMessage(HttpCode.ACCESS_DENIED, "access denied"), ResponseMessage(HttpCode.NOT_FOUND,"not found"))
-      )
-  */
-
-  def orgsGetRoute: Route = get {
-    path("orgs") {
-      val orgs: Future[TmpOrgs] = (orgsActor ? GetOrgs).mapTo[TmpOrgs]
-      complete(orgs)
-    }
+  // Multiplexer for all of the route implementations for /orgs
+  def receive: Receive = {
+    case GetOrgs => getOrgs
   }
 
-  /*
-  get("/orgs", operation(getOrgs)) ({
+  def getOrgs = {
     // If filter is orgType=IBM then it is a different access required than reading all orgs
+    /*
     val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
 
     authenticate().authorizeTo(TOrg("*"),access)
@@ -89,17 +121,20 @@ trait OrgsRoutes extends JsonSupport {
     // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
     params.get("orgtype").foreach(orgType => { if (orgType.contains("%")) q = q.filter(_.orgType like orgType) else q = q.filter(_.orgType === orgType) })
     params.get("label").foreach(label => { if (label.contains("%")) q = q.filter(_.label like label) else q = q.filter(_.label === label) })
+    */
+    val q = OrgsTQ.rows
 
     db.run(q.result).map({ list =>
-      logger.debug("GET /orgs result size: "+list.size)
-      val orgs = new MutableHashMap[String,Org]
-      if (list.nonEmpty) for (a <- list) orgs.put(a.orgId, a.toOrg)
-      if (orgs.nonEmpty) resp.setStatus(HttpCode.OK)
-      else resp.setStatus(HttpCode.NOT_FOUND)
-      GetOrgsResponse(orgs.toMap, 0)
+      //logger.debug("GET /orgs result size: "+list.size)
+      val orgs = list.map(a => a.orgId -> a.toOrg).toMap
+      //val orgs = new MutableHashMap[String, Org]
+      //if (list.nonEmpty) for (a <- list) orgs.put(a.orgId, a.toOrg)
+      //if (orgs.nonEmpty) resp.setStatus(HttpCode.OK)
+      //else resp.setStatus(HttpCode.NOT_FOUND)
+
+      sender() ! GetOrgsResponse(orgs, 0).toTmpOrgs // the ! method sends a 1-way fire-and-forget msg to the object (in this case sender() )
     })
-  })
-  */
+  }
 
   /*
   def renderAttribute(attribute: scala.Seq[Any]): String = {
