@@ -6,14 +6,14 @@ import ExchangePostgresProfile.api._
 //import org.json4s.jackson.Serialization.read
 //import ExchangePostgresProfile.jsonMethods._
 
+// Note: We use json4s in the table classes to serialize them to/from the db, but we use spray json in the route classes to serialize to/from the client. We should keep these separate.
+
 /** Contains the object representations of the DB tables related to orgs. */
 
 case class OrgRow(orgId: String, orgType: String, label: String, description: String, lastUpdated: String, tags: Option[JValue]) {
   protected implicit val jsonFormats: Formats = DefaultFormats
 
-  def toOrg: Org = {
-    new Org(orgType, label, description, lastUpdated, tags.flatMap(_.extractOpt[Map[String, String]]))
-  }
+  def toOrg = Org(orgType, label, description, lastUpdated, tags.flatMap(_.extractOpt[Map[String, String]]))
 
   // update returns a DB action to update this row
   def update: DBIO[_] = (for { m <- OrgsTQ.rows if m.orgid === orgId } yield m).update(this)
@@ -68,7 +68,6 @@ object OrgsTQ {
 }
 
 // This is the org table minus the key - used as the data structure to return to the REST clients
-class Org(var orgType: String, var label: String, var description: String, var lastUpdated: String, var tags: Option[Map[String, String]]) {
-  //def copy = new Org(orgType, label, description, lastUpdated)
-}
+//todo: can this be a final case class?
+final case class Org(orgType: String, label: String, description: String, lastUpdated: String, tags: Option[Map[String, String]])
 

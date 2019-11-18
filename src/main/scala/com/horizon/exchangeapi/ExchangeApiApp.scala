@@ -6,8 +6,7 @@
 
 package com.horizon.exchangeapi
 
-//import org.scalatra._
-//import akka.event.Logging
+import akka.event.Logging
 import com.mchange.v2.c3p0.ComboPooledDataSource
 import slick.jdbc.PostgresProfile.api._
 //import org.json4s._
@@ -20,38 +19,39 @@ import scala.concurrent.{ Await, ExecutionContext, Future }
 import scala.concurrent.duration.Duration
 import scala.util.{ Failure, Success }
 
-import akka.actor.{ ActorRef, ActorSystem }
+import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
 
 import akka.http.scaladsl.server.Directives._
+import com.typesafe.config._
 
 /**
  * Main akka server for the Exchange REST API.
  */
 //class ExchangeApiApp(val db: Database)(implicit val swagger: Swagger) extends ScalatraServlet
 //with FutureSupport with NativeJsonSupport with SwaggerSupport with CorsSupport with AuthenticationSupport with NodesRoutes with AgbotsRoutes with UsersRoutes with AdminRoutes with ServiceRoutes with PatternRoutes with OrgRoutes with BusinessRoutes with CatalogRoutes {
-object ExchangeApiApp extends App
-  with OrgsRoutes {
+class ExchangeApiApp {} // so far just for the Logging
+object ExchangeApiApp extends App {
 
   /** Sets up automatic case class to JSON output serialization, required by the JValueResult trait. */
   //protected implicit val jsonFormats: Formats = DefaultFormats
   // implicit val formats = Serialization.formats(NoTypeHints)     // needed for serializing the softwareVersions map to a string (and back)
 
   // set up ActorSystem and other dependencies here
-  implicit val system: ActorSystem = ActorSystem("helloAkkaHttpServer")
+  val actorConfig = ConfigFactory.parseString("akka.loglevel=DEBUG")
+  implicit val system: ActorSystem = ActorSystem("actors", actorConfig)
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val executionContext: ExecutionContext = system.dispatcher
 
   //implicit val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
-  //lazy val log = Logging(system, classOf[OrgsRoutes])
+  lazy val logger = Logging(system, classOf[ExchangeApiApp])
 
-  val orgsActor: ActorRef = system.actorOf(OrgsActor.props, "orgsActor") // I think this will end up instantiating OrgsActor via the creator function that is part of props
+  def testRoute = { path("test") { get { logger.debug("In /test"); complete("""{"test":"Ok"}""") } } }
+  val orgsRoutes = (new OrgsRoutes).routes
 
-  def testRoute = { path("test") { get { complete("Ok") } } }
-
-  lazy val routes: Route = testRoute ~ orgsRoutes // for larger apps: val route = concat(userRoutes, serviceRoutes, ...)
+  lazy val routes: Route = pathPrefix("v1") { testRoute ~ orgsRoutes } // for larger apps: val route = concat(userRoutes, serviceRoutes, ...)
 
   // Get config file, normally in /etc/horizon/exchange/config.json
   ExchConfig.load()
@@ -67,7 +67,7 @@ object ExchangeApiApp extends App
   cpds.setMinPoolSize(ExchConfig.getInt("api.db.minPoolSize"))
   cpds.setAcquireIncrement(ExchConfig.getInt("api.db.acquireIncrement"))
   cpds.setMaxPoolSize(ExchConfig.getInt("api.db.maxPoolSize"))
-  //logger.info("Created c3p0 connection pool")
+  logger.info("Created c3p0 connection pool")
 
   val maxConns = ExchConfig.getInt("api.db.maxPoolSize")
   val db: Database =
@@ -77,6 +77,7 @@ object ExchangeApiApp extends App
         Some(maxConns),
         AsyncExecutor("ExchangeExecutor", maxConns, maxConns, 1000, maxConns))
     } else null
+  logger.info("Set up DB connection with maxPoolSize=" + maxConns)
 
   def getDb: Database = db
 
