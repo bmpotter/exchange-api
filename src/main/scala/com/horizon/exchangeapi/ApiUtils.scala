@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 
+//todo: replace the numbers with StatusCodes values
 /** HTTP codes, taken from https://en.wikipedia.org/wiki/List_of_HTTP_status_codes and https://www.restapitutorial.com/httpstatuscodes.html */
 object HttpCode {
   val OK = 200

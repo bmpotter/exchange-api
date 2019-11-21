@@ -15,20 +15,28 @@ import scala.util._
 //import java.net._
 */
 
+//import javax.ws.rs.{GET, POST, Path}
+import javax.ws.rs.{ GET, Path }
 import akka.actor.ActorSystem
 import akka.event.Logging
-
+import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
-//import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Route
+import io.swagger.v3.oas.annotations.enums.ParameterIn
 //import akka.http.scaladsl.server.directives.MethodDirectives.delete
 import akka.http.scaladsl.server.directives.MethodDirectives.get
 //import akka.http.scaladsl.server.directives.MethodDirectives.post
 import akka.http.scaladsl.server.directives.RouteDirectives.complete
 import akka.http.scaladsl.server.directives.PathDirectives.path
 
+//import io.swagger.v3.oas.annotations.enums.ParameterIn
+import io.swagger.v3.oas.annotations.media.{ Content, Schema }
+//import io.swagger.v3.oas.annotations.responses.ApiResponse
+//import io.swagger.v3.oas.annotations.{ Operation, Parameter }
+import io.swagger.v3.oas.annotations._
+
 import scala.collection.immutable._
-import scala.concurrent.Future
+//import scala.concurrent.Future
 
 /* when using actors
 import akka.actor.{ ActorRef, ActorSystem }
@@ -46,7 +54,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
 
-//todo: These are the input and output structures for /orgs routes. Swagger and/or json seem to require they be outside the trait.
+// Note: These are the input and output structures for /orgs routes. Swagger and/or json seem to require they be outside the trait.
 
 /** Output format for GET /orgs */
 //final case class TmpOrg(orgType: String, label: String, description: String, lastUpdated: String)
@@ -57,21 +65,18 @@ final case class GetOrgsResponse(orgs: Map[String, Org], lastIndex: Int)
 //final case class GetOrgAttributeResponse(attribute: String, value: String)
 
 /** Routes for /orgs */
+@Path("/orgs")
 class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport {
+  // Tell spray how to marshal our types (models) to/from the rest client
   // old way: protected implicit def jsonFormats: Formats
-  // import the default encoders for primitive types (Int, String, Lists etc)
   import DefaultJsonProtocol._
-
   // Note: it is important to use the immutable version of collections like Map
   // Note: if you accidentally omit a class here, you may get a msg like: [error] /Users/bp/src/github.com/open-horizon/exchange-api/src/main/scala/com/horizon/exchangeapi/OrgsRoutes.scala:49:44: could not find implicit value for evidence parameter of type spray.json.DefaultJsonProtocol.JF[scala.collection.immutable.Seq[com.horizon.exchangeapi.TmpOrg]]
-
   implicit val orgJsonFormat = jsonFormat5(Org)
   implicit val orgsJsonFormat = jsonFormat2(GetOrgsResponse)
-
   //implicit val actionPerformedJsonFormat = jsonFormat1(ActionPerformed)
 
   def db: Database = ExchangeApiApp.getDb
-
   lazy val logger = Logging(system, classOf[OrgsRoutes])
 
   /* when using actors
@@ -83,56 +88,53 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport {
   implicit lazy val timeout = Timeout(5.seconds) //note: get this from the system's configuration
   */
 
+  // Note: to make swagger work, each route should be returned by its own method: https://github.com/swagger-akka-http/swagger-akka-http
   def routes: Route = orgsGetRoute
 
   // ====== GET /orgs ================================
-  /*
-val getOrgs =
-  (apiOperation[GetOrgsResponse]("getOrgs")
-    summary("Returns all orgs")
-    description("""Returns some or all org definitions in the exchange DB. Can be run by any user if filter orgType=IBM is used, otherwise can only be run by the root user.""")
-    parameters(
-      Parameter("id", DataType.String, Option[String]("Username of exchange user, or ID of the node or agbot. This parameter can also be passed in the HTTP Header."), paramType=ParamType.Query, required=false),
-      Parameter("token", DataType.String, Option[String]("Password of exchange user, or token of the node or agbot. This parameter can also be passed in the HTTP Header."), paramType=ParamType.Query, required=false),
-      Parameter("orgtype", DataType.String, Option[String]("Filter results to only include orgs with this org type. A common org type is 'IBM'."), paramType=ParamType.Query, required=false),
-      Parameter("label", DataType.String, Option[String]("Filter results to only include orgs with this label (can include % for wildcard - the URL encoding for % is %25)"), paramType=ParamType.Query, required=false)
-      )
-    responseMessages(ResponseMessage(HttpCode.BADCREDS,"invalid credentials"), ResponseMessage(HttpCode.ACCESS_DENIED, "access denied"), ResponseMessage(HttpCode.NOT_FOUND,"not found"))
-    )
-*/
 
-  def orgsGetRoute: Route = get {
-    path("orgs") {
-      logger.debug("Trying to get /orgs")
-      val orgs: Future[GetOrgsResponse] = orgsGet()
-      logger.debug("Back from GetOrgs msg")
-      complete(orgs)
-    }
-  }
+  /* Akka-http Directives Notes:
+  * Directives reference: https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/alphabetically.html
+  * Get variable parts of the route: path("orgs" / String) { orgid=>
+  * Get the request context: get { ctx => println(ctx.request.method.name)
+  * Get the request: extractRequest { request => println(request.headers.toString())
+  * Concatenate directive extractions: (path("order" / IntNumber) & get & extractMethod) { (id, m) =>
+  * For url query parameters, the single quote in scala means it is a symbol, the question mark means it's optional */
 
-  def orgsGet() = {
-    logger.debug("In get /orgs")
-    /*
-    // If filter is orgType=IBM then it is a different access required than reading all orgs
-    val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
+  @GET
+  @Operation(summary = "Returns all orgs", description = """Returns some or all org definitions in the exchange DB. Can be run by any user if filter orgType=IBM is used, otherwise can only be run by the root user.""",
+    method = "GET",
+    parameters = Array(
+      new Parameter(name = "orgtype", in = ParameterIn.QUERY, required = false, description = "Filter results to only include orgs with this org type. A common org type is 'IBM'.",
+        content = Array(new Content(schema = new Schema(implementation = classOf[String], allowableValues = Array("IBM"))))),
+      new Parameter(name = "label", in = ParameterIn.QUERY, required = false, description = "Filter results to only include orgs with this label (can include % for wildcard - the URL encoding for % is %25)",
+        content = Array(new Content(schema = new Schema(implementation = classOf[String]))))),
+    responses = Array(
+      new responses.ApiResponse(responseCode = "200", description = "GET /orgs response",
+        content = Array(new Content(schema = new Schema(implementation = classOf[GetOrgsResponse])))),
+      new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
+      new responses.ApiResponse(responseCode = "403", description = "access denied"),
+      new responses.ApiResponse(responseCode = "404", description = "not found")))
+  def orgsGetRoute: Route = (get & path("orgs") & extractCredentials & extractHost & parameter(('orgtype.?, 'label.?))) { (creds, host, orgType, label) =>
+    logger.debug(s"Doing GET /orgs with creds:${creds.get.token()}, host:$host, orgType:$orgType, label:$label")
+    complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
+      /*
+      // If filter is orgType=IBM then it is a different access required than reading all orgs
+      val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
+      authenticate().authorizeTo(TOrg("*"),access)
+      */
+      var q = OrgsTQ.rows.subquery
+      // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
+      orgType match { case Some(oType) => if (oType.contains("%")) q = q.filter(_.orgType like oType) else q = q.filter(_.orgType === oType); case _ => ; }
+      label match { case Some(lab) => if (lab.contains("%")) q = q.filter(_.label like lab) else q = q.filter(_.label === lab); case _ => ; }
 
-    authenticate().authorizeTo(TOrg("*"),access)
-    val resp = response
-    var q = OrgsTQ.rows.subquery
-    // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
-    params.get("orgtype").foreach(orgType => { if (orgType.contains("%")) q = q.filter(_.orgType like orgType) else q = q.filter(_.orgType === orgType) })
-    params.get("label").foreach(label => { if (label.contains("%")) q = q.filter(_.label like label) else q = q.filter(_.label === label) })
-    */
+      db.run(q.result).map({ list =>
+        logger.debug("GET /orgs result size: " + list.size)
+        val orgs = list.map(a => a.orgId -> a.toOrg).toMap
+        val code = if (orgs.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
 
-    val q = OrgsTQ.rows
-
-    db.run(q.result).map({ list =>
-      logger.debug("GET /orgs result size: " + list.size)
-      val orgs = list.map(a => a.orgId -> a.toOrg).toMap
-      //if (orgs.nonEmpty) resp.setStatus(HttpCode.OK)
-      //else resp.setStatus(HttpCode.NOT_FOUND)
-
-      GetOrgsResponse(orgs, 0)
+        (code, GetOrgsResponse(orgs, 0))
+      })
     })
   }
 

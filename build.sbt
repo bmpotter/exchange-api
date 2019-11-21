@@ -1,6 +1,6 @@
-//lazy val scalatraVersion = "2.6.5"    // can see the latest version at https://github.com/scalatra/scalatra/releases
-lazy val akkaHttpVersion = "10.1.10"
-lazy val akkaVersion    = "2.5.26"
+// For latest versions, see https://mvnrepository.com/
+lazy val akkaHttpVersion = "10.1.10"  // as of 11/19/2019 this is the latest version
+lazy val akkaVersion    = "2.5.26"  // released 10/2019. Version 2.6.0 was released 11/2019
 
 lazy val root = (project in file(".")).
   settings(
@@ -17,6 +17,14 @@ lazy val root = (project in file(".")).
       "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
       "com.typesafe.akka" %% "akka-http-xml"        % akkaHttpVersion,
       "com.typesafe.akka" %% "akka-stream"          % akkaVersion,
+
+      "javax.ws.rs" % "javax.ws.rs-api" % "2.0.1",  // this is from 8/2014. Version 2.1.1 from 9/2018 gets an error loading
+      "com.github.swagger-akka-http" %% "swagger-akka-http" % "latest.release",
+      "com.github.swagger-akka-http" %% "swagger-scala-module" % "latest.release",
+      "io.swagger.core.v3" % "swagger-core" % "latest.release",
+      "io.swagger.core.v3" % "swagger-annotations" % "latest.release",
+      "io.swagger.core.v3" % "swagger-models" % "latest.release",
+      "io.swagger.core.v3" % "swagger-jaxrs2" % "latest.release",
 
       "com.typesafe.slick" %% "slick" % "latest.release",
       "com.typesafe.slick" %% "slick-hikaricp" % "latest.release",

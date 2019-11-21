@@ -167,13 +167,11 @@ gen-key:
 sync-swagger-ui:
 	rm -rf /tmp/swagger-ui.backup
 	mkdir -p /tmp/swagger-ui.backup
-	cp -a src/main/webapp/* /tmp/swagger-ui.backup    # backup the version of swagger-ui we are currently using, in case the newer verion does not work
+	cp -a src/main/resources/swagger/* /tmp/swagger-ui.backup    # backup the version of swagger-ui we are currently using, in case the newer verion does not work
 	git -C ../../swagger-api/swagger-ui pull    # update the repo
-	mv src/main/webapp/index.html src/main/webapp/our-index.html   # we have our own main index.html, so move it out of the way temporaily
-	rsync -aiu ../../swagger-api/swagger-ui/dist/ src/main/webapp      # copy the latest dist dir from the repo into our repo
-	mv src/main/webapp/index.html src/main/webapp/swagger-index.html
-	mv src/main/webapp/our-index.html src/main/webapp/index.html
-	#sed -i '' 's/\(new SwaggerUi({\) *$$/\1 validatorUrl: null,/' src/main/webapp/swagger-index.html   # this is the only way to set validatorUrl to null in swagger
+	cp -a ../../swagger-api/swagger-ui/dist/ src/main/resources/swagger      # copy the latest dist dir from the repo into our repo
+	sed -e 's|https://petstore.swagger.io/v2/swagger.json|/v1/api-docs/swagger.json|' src/main/resources/swagger/index.html > /tmp/swagger-index.html
+	mv /tmp/swagger-index.html src/main/resources/swagger/index.html
 
 testmake:
 	@echo "BRANCH=$(BRANCH)"

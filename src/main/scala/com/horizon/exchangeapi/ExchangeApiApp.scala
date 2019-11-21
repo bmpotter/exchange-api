@@ -27,6 +27,11 @@ import akka.stream.ActorMaterializer
 import akka.http.scaladsl.server.Directives._
 import com.typesafe.config._
 
+object ExchangeApiConstants {
+  val serviceHost = "localhost"
+  val servicePort = 8080
+}
+
 /**
  * Main akka server for the Exchange REST API.
  */
@@ -50,8 +55,11 @@ object ExchangeApiApp extends App {
 
   def testRoute = { path("test") { get { logger.debug("In /test"); complete("""{"test":"Ok"}""") } } }
   val orgsRoutes = (new OrgsRoutes).routes
+  //val swaggerRoutes = (new SwaggerDocService).routes
+  val swaggerDocRoutes = SwaggerDocService.routes
+  val swaggerUiRoutes = (new SwaggerUiService).routes
 
-  lazy val routes: Route = pathPrefix("v1") { testRoute ~ orgsRoutes } // for larger apps: val route = concat(userRoutes, serviceRoutes, ...)
+  lazy val routes: Route = pathPrefix("v1") { testRoute ~ orgsRoutes ~ swaggerDocRoutes ~ swaggerUiRoutes }
 
   // Get config file, normally in /etc/horizon/exchange/config.json
   ExchConfig.load()
@@ -124,7 +132,7 @@ object ExchangeApiApp extends App {
   // Initialize authentication cache from objects in the db
   AuthCache.initAllCaches(db, includingIbmAuth = true)
 
-  val serverBinding: Future[Http.ServerBinding] = Http().bindAndHandle(routes, "localhost", 8080)
+  val serverBinding: Future[Http.ServerBinding] = Http().bindAndHandle(routes, ExchangeApiConstants.serviceHost, ExchangeApiConstants.servicePort)
 
   serverBinding.onComplete {
     case Success(bound) =>
@@ -138,6 +146,7 @@ object ExchangeApiApp extends App {
   Await.result(system.whenTerminated, Duration.Inf)
 }
 
+//todo: move these to auth/Exceptions.scala ?
 class AccessDeniedException(var httpCode: Int, var apiResponse: String, msg: String) extends Exception(msg)
 class BadInputException(var httpCode: Int, var apiResponse: String, msg: String) extends Exception(msg)
 class NotFoundException(var httpCode: Int, var apiResponse: String, msg: String) extends Exception(msg)
