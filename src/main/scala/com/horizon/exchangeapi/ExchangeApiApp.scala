@@ -21,10 +21,16 @@ import scala.util.{ Failure, Success }
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
+import akka.http.scaladsl.model._
+import akka.http.scaladsl.server._
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
 
 import akka.http.scaladsl.server.Directives._
+//import StatusCodes._
+import spray.json.DefaultJsonProtocol
+import spray.json._
+
 import com.typesafe.config._
 
 object ExchangeApiConstants {
@@ -43,6 +49,8 @@ object ExchangeApiApp extends App {
   /** Sets up automatic case class to JSON output serialization, required by the JValueResult trait. */
   //protected implicit val jsonFormats: Formats = DefaultFormats
   // implicit val formats = Serialization.formats(NoTypeHints)     // needed for serializing the softwareVersions map to a string (and back)
+  import DefaultJsonProtocol._
+  implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
 
   // set up ActorSystem and other dependencies here
   val actorConfig = ConfigFactory.parseString("akka.loglevel=DEBUG")
@@ -53,12 +61,38 @@ object ExchangeApiApp extends App {
   //implicit val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
   lazy val logger = Logging(system, classOf[ExchangeApiApp])
 
+  implicit def myRejectionHandler =
+    RejectionHandler.newBuilder()
+      .handle {
+        case r: ExchangeRejection =>
+          complete((r.httpCode, r.toJsonStr))
+      }
+      .handle {
+        case AuthorizationFailedRejection =>
+          complete((StatusCodes.Forbidden, "You're out of your depth!"))
+      }
+      .handle {
+        case ValidationRejection(msg, _) =>
+          complete((StatusCodes.BadRequest, ApiResponse(ApiResponseType.BAD_INPUT, msg).toJson.toString()))
+      }
+      // the default rejection handler will catch the rest
+      //todo: not sure when these will occur
+      .handleAll[MethodRejection] { methodRejections =>
+        val names = methodRejections.map(_.supported.name)
+        complete((StatusCodes.MethodNotAllowed, s"method not supported: ${names mkString " or "}"))
+      }
+      .handleNotFound { complete((StatusCodes.NotFound, "resource not found")) }
+      .result()
+
   def testRoute = { path("test") { get { logger.debug("In /test"); complete("""{"test":"Ok"}""") } } }
   val orgsRoutes = (new OrgsRoutes).routes
   //val swaggerRoutes = (new SwaggerDocService).routes
   val swaggerDocRoutes = SwaggerDocService.routes
   val swaggerUiRoutes = (new SwaggerUiService).routes
 
+  // Note: all exceptions (code failures) will be handled by the akka-http exception handler. To override that, see https://doc.akka.io/docs/akka-http/current/routing-dsl/exception-handling.html#exception-handling
+  //todo: use directive https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/debugging-directives/logRequestResult.html to log requests and their results
+  //todo: use directive https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/misc-directives/selectPreferredLanguage.html to support a different language for each client
   lazy val routes: Route = pathPrefix("v1") { testRoute ~ orgsRoutes ~ swaggerDocRoutes ~ swaggerUiRoutes }
 
   // Get config file, normally in /etc/horizon/exchange/config.json

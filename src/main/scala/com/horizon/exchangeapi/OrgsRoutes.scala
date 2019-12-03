@@ -22,6 +22,8 @@ import akka.event.Logging
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
+//import akka.http.scaladsl.server.ValidationRejection
+//import com.horizon.exchangeapi.auth._
 import io.swagger.v3.oas.annotations.enums.ParameterIn
 //import akka.http.scaladsl.server.directives.MethodDirectives.delete
 import akka.http.scaladsl.server.directives.MethodDirectives.get
@@ -53,6 +55,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import spray.json.DefaultJsonProtocol
+//import spray.json._
 
 // Note: These are the input and output structures for /orgs routes. Swagger and/or json seem to require they be outside the trait.
 
@@ -116,26 +119,39 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport {
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
   def orgsGetRoute: Route = (get & path("orgs") & extractCredentials & extractHost & parameter(('orgtype.?, 'label.?))) { (creds, host, orgType, label) =>
+    //todo: consider using the directive https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/security-directives/authenticateBasic.html to authenticate/authorize the client
     logger.debug(s"Doing GET /orgs with creds:${creds.get.token()}, host:$host, orgType:$orgType, label:$label")
-    complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
-      /*
-      // If filter is orgType=IBM then it is a different access required than reading all orgs
-      val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
-      authenticate().authorizeTo(TOrg("*"),access)
-      */
-      var q = OrgsTQ.rows.subquery
-      // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
-      orgType match { case Some(oType) => if (oType.contains("%")) q = q.filter(_.orgType like oType) else q = q.filter(_.orgType === oType); case _ => ; }
-      label match { case Some(lab) => if (lab.contains("%")) q = q.filter(_.label like lab) else q = q.filter(_.label === lab); case _ => ; }
+    //failWith(new InvalidCredentialsException("bad creds"))  // <- this would create an internal error response with a stack trace
+    //if (orgType.isDefined && orgType.get != "IBM") reject(ValidationRejection("bad user input"))
+    //if (orgType.isDefined && orgType.get != "IBM") reject(AccessDeniedRejection("access to orgType really denied"))
+    //todo: add this to messages.txt
+    validate(orgType.isEmpty || orgType.get == "IBM", "orgType must be 'IBM' or blank") {
+      complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
+        /*
+        // If filter is orgType=IBM then it is a different access required than reading all orgs
+        val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
+        authenticate().authorizeTo(TOrg("*"),access)
+        */
+        var q = OrgsTQ.rows.subquery
+        // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
+        orgType match {
+          case Some(oType) => if (oType.contains("%")) q = q.filter(_.orgType like oType) else q = q.filter(_.orgType === oType);
+          case _ => ;
+        }
+        label match {
+          case Some(lab) => if (lab.contains("%")) q = q.filter(_.label like lab) else q = q.filter(_.label === lab);
+          case _ => ;
+        }
 
-      db.run(q.result).map({ list =>
-        logger.debug("GET /orgs result size: " + list.size)
-        val orgs = list.map(a => a.orgId -> a.toOrg).toMap
-        val code = if (orgs.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
+        db.run(q.result).map({ list =>
+          logger.debug("GET /orgs result size: " + list.size)
+          val orgs = list.map(a => a.orgId -> a.toOrg).toMap
+          val code = if (orgs.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
 
-        (code, GetOrgsResponse(orgs, 0))
+          (code, GetOrgsResponse(orgs, 0))
+        })
       })
-    })
+    }
   }
 
   /*

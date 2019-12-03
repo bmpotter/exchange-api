@@ -4,6 +4,8 @@ package com.horizon.exchangeapi
 import java.io.File
 import java.time._
 
+import akka.http.scaladsl.model.{ StatusCode, StatusCodes }
+import akka.http.scaladsl.server._
 import com.horizon.exchangeapi.tables.{ OrgRow, UserRow }
 import com.osinka.i18n.{ Lang, Messages }
 import com.typesafe.config._
@@ -22,6 +24,9 @@ import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
+
+import spray.json.DefaultJsonProtocol
+import spray.json._
 
 //todo: replace the numbers with StatusCodes values
 /** HTTP codes, taken from https://en.wikipedia.org/wiki/List_of_HTTP_status_codes and https://www.restapitutorial.com/httpstatuscodes.html */
@@ -59,6 +64,47 @@ object ApiResponseType {
   val INFO = ExchangeMessage.translateMessage("info")
   val OK = ExchangeMessage.translateMessage("ok")
   val TOO_BUSY = ExchangeMessage.translateMessage("too.busy")
+}
+
+trait ExchangeRejection extends Rejection {
+  // Needed so akka can marshal ApiResponse into json to return it to the client
+  import DefaultJsonProtocol._
+  implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
+
+  def httpCode: StatusCode
+  def apiRespCode: String
+  def apiRespMsg: String
+  def toJsonStr = ApiResponse(apiRespCode, apiRespMsg).toJson.toString()
+}
+
+final case class AccessDeniedRejection(apiRespMsg: String) extends ExchangeRejection {
+  def httpCode = StatusCodes.Forbidden
+  def apiRespCode = ApiResponseType.ACCESS_DENIED
+}
+
+final case class AlreadyExistsRejection(apiRespMsg: String) extends ExchangeRejection {
+  def httpCode = StatusCodes.Forbidden
+  def apiRespCode = ApiResponseType.ALREADY_EXISTS
+}
+
+final case class AlreadyExists2Rejection(apiRespMsg: String) extends ExchangeRejection {
+  def httpCode = StatusCodes.Conflict
+  def apiRespCode = ApiResponseType.ALREADY_EXISTS
+}
+
+final case class NotFoundRejection(apiRespMsg: String) extends ExchangeRejection {
+  def httpCode = StatusCodes.NotFound
+  def apiRespCode = ApiResponseType.NOT_FOUND
+}
+
+final case class BadGwRejection(apiRespMsg: String) extends ExchangeRejection {
+  def httpCode = StatusCodes.BadGateway
+  def apiRespCode = ApiResponseType.BAD_GW
+}
+
+final case class GwTimeoutRejection(apiRespMsg: String) extends ExchangeRejection {
+  def httpCode = StatusCodes.GatewayTimeout
+  def apiRespCode = ApiResponseType.GW_TIMEOUT
 }
 
 object ExchangeMessage {
