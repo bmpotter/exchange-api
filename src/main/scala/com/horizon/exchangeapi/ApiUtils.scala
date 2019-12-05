@@ -4,6 +4,7 @@ package com.horizon.exchangeapi
 import java.io.File
 import java.time._
 
+import akka.event.LoggingAdapter
 import akka.http.scaladsl.model.{ StatusCode, StatusCodes }
 import akka.http.scaladsl.server._
 import com.horizon.exchangeapi.tables.{ OrgRow, UserRow }
@@ -13,14 +14,10 @@ import org.json4s.JValue
 import slick.jdbc.PostgresProfile.api._
 
 import scala.collection.immutable._
-//import scala.collection.mutable.{HashMap => MutableHashMap}
 import scala.util._
-//import java.util
 import java.util.Properties
 
-import ch.qos.logback.classic.{ Level, Logger }
-//import com.horizon.exchangeapi.tables._
-import org.slf4j.LoggerFactory
+import ch.qos.logback.classic.Level
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -135,10 +132,11 @@ object ExchConfig {
   // The syntax called CONF is typesafe's superset of json that allows comments, etc. See https://github.com/typesafehub/config#using-hocon-the-json-superset. Strict json would be ConfigSyntax.JSON.
   val configOpts = ConfigParseOptions.defaults().setSyntax(ConfigSyntax.CONF).setAllowMissing(false)
   var config = ConfigFactory.parseResources(configResourceName, configOpts) // these are the default values, this file is bundled in the jar
-  val LOGGER = "EXCHANGE" //or could use org.slf4j.Logger.ROOT_LOGGER_NAME
-  val logger: Logger = LoggerFactory.getLogger(LOGGER).asInstanceOf[Logger] //todo: maybe add a custom layout that includes the date: http://logback.qos.ch/manual/layouts.html
+
+  //val LOGGER = "EXCHANGE" //or could use org.slf4j.Logger.ROOT_LOGGER_NAME
+  //val logger: Logger = LoggerFactory.getLogger(LOGGER).asInstanceOf[Logger] //todo: maybe add a custom layout that includes the date: http://logback.qos.ch/manual/layouts.html
   // Maps log levels expressed as strings in the config file to the slf4j log level enums
-  val levels: Map[String, Level] = Map("OFF" -> Level.OFF, "ERROR" -> Level.ERROR, "WARN" -> Level.WARN, "INFO" -> Level.INFO, "DEBUG" -> Level.DEBUG, "TRACE" -> Level.TRACE, "ALL" -> Level.ALL)
+  val levels: Map[String, Level] = Map("OFF" -> Level.OFF, "ERROR" -> Level.ERROR, "WARN" -> Level.WARN, "INFO" -> Level.INFO, "DEBUG" -> Level.DEBUG /* , "TRACE" -> Level.TRACE, "ALL" -> Level.ALL */ )
   var rootHashedPw = "" // so we can remember the hashed pw between load() and createRoot()
 
   /** Tries to load the user's external config file */
@@ -146,33 +144,35 @@ object ExchConfig {
     val f = new File(configFileName)
     if (f.isFile) { // checks if it exists and is a regular file
       config = ConfigFactory.parseFile(f, configOpts).withFallback(config) // uses the defaults for anything not specified in the external config file
-      logger.info("Using config file " + configFileName)
+      println("Using config file " + configFileName)
     } else {
-      logger.info("Config file " + configFileName + " not found. Running with defaults suitable for local development.")
-    }
-
-    // Set the logging level if specified
-    val loglev = config.getString("api.logging.level")
-    if (loglev != "") {
-      levels.get(loglev) match {
-        case Some(level) => logger.setLevel(level)
-        case None => logger.error("Invalid logging level '" + loglev + "' specified in config.json. Continuing with the default logging level.")
-      }
+      println("Config file " + configFileName + " not found. Running with defaults suitable for local development.")
     }
 
     // Note: currently there is no other value besides guava
     AuthCache.cacheType = config.getString("api.cache.type") // need to do this before using the cache in the next step
-    logger.info("Using cache type: " + AuthCache.cacheType)
+    //logger.info("Using cache type: " + AuthCache.cacheType)
+  }
 
-    createRootInCache()
+  def getLogLevel = {
+    val loglev = config.getString("api.logging.level")
+    if (loglev == "") Level.INFO.toString
+    else {
+      levels.get(loglev) match {
+        case Some(level) => level.toString
+        case None =>
+          println("Invalid logging level '" + loglev + "' specified in config.json. Continuing with the default logging level " + Level.INFO + ".")
+          Level.INFO.toString
+      }
+    }
   }
 
   // Put the root user in the auth cache in case the db has not been inited yet and they need to be able to run POST /admin/initdb
-  def createRootInCache(): Unit = {
+  def createRootInCache()(implicit logger: LoggingAdapter): Unit = {
     val rootpw = config.getString("api.root.password")
     val rootIsEnabled = config.getBoolean("api.root.enabled")
     if (rootpw == "" || !rootIsEnabled) {
-      logger.warn("Root password is not specified in config.json or is not enabled. You will not be able to do exchange operations that require root privilege.")
+      logger.warning("Root password is not specified in config.json or is not enabled. You will not be able to do exchange operations that require root privilege.")
       return
     }
     if (rootHashedPw == "") {
@@ -193,7 +193,7 @@ object ExchConfig {
   def mod(props: Properties): Unit = { config = ConfigFactory.parseProperties(props).withFallback(config) }
 
   /** Create the root user in the DB. This is done separately from load() because we need the db execution context */
-  def createRoot(db: Database): Unit = {
+  def createRoot(db: Database)(implicit logger: LoggingAdapter): Unit = {
     // If the root pw is set in the config file, create or update the root user in the db to match
     val rootpw = config.getString("api.root.password")
     val rootIsEnabled = config.getBoolean("api.root.enabled")

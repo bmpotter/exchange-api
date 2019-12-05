@@ -6,7 +6,9 @@
 
 package com.horizon.exchangeapi
 
-import akka.event.Logging
+import akka.event.{ Logging, LoggingAdapter }
+import akka.http.scaladsl.server.RouteResult.Rejected
+import akka.http.scaladsl.server.directives.{ DebuggingDirectives, LogEntry }
 import com.mchange.v2.c3p0.ComboPooledDataSource
 import slick.jdbc.PostgresProfile.api._
 //import org.json4s._
@@ -32,6 +34,7 @@ import spray.json.DefaultJsonProtocol
 import spray.json._
 
 import com.typesafe.config._
+import java.util.Base64
 
 object ExchangeApiConstants {
   val serviceHost = "localhost"
@@ -52,15 +55,20 @@ object ExchangeApiApp extends App {
   import DefaultJsonProtocol._
   implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
 
-  // set up ActorSystem and other dependencies here
-  val actorConfig = ConfigFactory.parseString("akka.loglevel=DEBUG")
+  // Set up ActorSystem and other dependencies here
+  ExchConfig.load() // get config file, normally in /etc/horizon/exchange/config.json
+  val actorConfig = ConfigFactory.parseString("akka.loglevel=" + ExchConfig.getLogLevel)
+  // Note: this object extends App which extends DelayedInit, so these values won't be available immediately. See https://stackoverflow.com/questions/36710169/why-are-implicit-variables-not-initialized-in-scala-when-called-from-unit-test/36710170
   implicit val system: ActorSystem = ActorSystem("actors", actorConfig)
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val executionContext: ExecutionContext = system.dispatcher
 
   //implicit val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
-  lazy val logger = Logging(system, classOf[ExchangeApiApp])
+  /*lazy*/ implicit val logger: LoggingAdapter = Logging(system, classOf[ExchangeApiApp])
+  AuthCache.logger = logger
+  ExchConfig.createRootInCache()
 
+  // Catches rejections from routes and returns the http codes we want
   implicit def myRejectionHandler =
     RejectionHandler.newBuilder()
       .handle {
@@ -84,6 +92,35 @@ object ExchangeApiApp extends App {
       .handleNotFound { complete((StatusCodes.NotFound, "resource not found")) }
       .result()
 
+  // Custom logging of requests and responses. See https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/debugging-directives/logRequestResult.html
+  def requestResponseLogging(req: HttpRequest): RouteResult => Option[LogEntry] = {
+    case RouteResult.Complete(res) =>
+      //todo: put this in Authentication.scala and use here and for rejections
+      // First decode the auth and get the org/id
+      val optionalEncodedAuth = req.getHeader("Authorization")
+      val encodedAuth = if (optionalEncodedAuth.isPresent) optionalEncodedAuth.get().value() else ""
+      val R1 = "^Basic ?(.*)$".r
+      val authId = encodedAuth match {
+        case R1(basicAuthEncoded) =>
+          try {
+            val decodedAuthStr = new String(Base64.getDecoder.decode(basicAuthEncoded), "utf-8")
+            val R2 = """^(.+):.+\s?$""".r // decode() seems to add a newline at the end
+            decodedAuthStr match {
+              case R2(id) => /*logger.trace("id="+id+",tok="+tok+".");*/ id
+              case _ => "<invalid-auth>"
+            }
+          } catch {
+            case _: IllegalArgumentException => "<invalid-auth>" // this is the exception from decode()
+          }
+        case _ => "<invalid-auth>"
+      }
+      // Now log all the info
+      Some(LogEntry(s"${req.uri.authority.host.address}:$authId ${req.method.name} ${req.uri}: ${res.status}", Logging.InfoLevel))
+    case Rejected(rejections) => Some(LogEntry(s"${req.method.name} ${req.uri}: rejected with ${rejections.head}", Logging.DebugLevel))
+    case _ => None
+  }
+
+  // Create all of the routes and concat together
   def testRoute = { path("test") { get { logger.debug("In /test"); complete("""{"test":"Ok"}""") } } }
   val orgsRoutes = (new OrgsRoutes).routes
   //val swaggerRoutes = (new SwaggerDocService).routes
@@ -91,12 +128,8 @@ object ExchangeApiApp extends App {
   val swaggerUiRoutes = (new SwaggerUiService).routes
 
   // Note: all exceptions (code failures) will be handled by the akka-http exception handler. To override that, see https://doc.akka.io/docs/akka-http/current/routing-dsl/exception-handling.html#exception-handling
-  //todo: use directive https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/debugging-directives/logRequestResult.html to log requests and their results
-  //todo: use directive https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/misc-directives/selectPreferredLanguage.html to support a different language for each client
-  lazy val routes: Route = pathPrefix("v1") { testRoute ~ orgsRoutes ~ swaggerDocRoutes ~ swaggerUiRoutes }
-
-  // Get config file, normally in /etc/horizon/exchange/config.json
-  ExchConfig.load()
+  //someday: use directive https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/misc-directives/selectPreferredLanguage.html to support a different language for each client
+  lazy val routes: Route = DebuggingDirectives.logRequestResult(requestResponseLogging _) { pathPrefix("v1") { testRoute ~ orgsRoutes ~ swaggerDocRoutes ~ swaggerUiRoutes } }
 
   // Load the db backend. The db access info must be in config.json
   var cpds: ComboPooledDataSource = _

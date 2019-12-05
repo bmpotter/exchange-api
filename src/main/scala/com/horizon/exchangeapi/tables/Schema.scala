@@ -1,8 +1,10 @@
 package com.horizon.exchangeapi.tables
 
+import akka.event.LoggingAdapter
 import com.horizon.exchangeapi.ApiTime
 import slick.jdbc.PostgresProfile.api._
-import org.slf4j._
+//import org.slf4j._
+
 import scala.collection.mutable.ListBuffer
 
 /** Stores the current DB schema version, and includes methods to upgrade to the latest schema. */
@@ -37,7 +39,7 @@ object SchemaTQ {
 
   // Returns the db actions necessary to get the schema from step-1 to step. The fromSchemaVersion arg is there because sometimes where you
   // originally came from affects how to get to the next step.
-  def getUpgradeSchemaStep(fromSchemaVersion: Int, step: Int)(implicit logger: Logger): DBIO[_] = {
+  def getUpgradeSchemaStep(fromSchemaVersion: Int, step: Int)(implicit logger: LoggingAdapter): DBIO[_] = {
     step match {
       case 0 => DBIO.seq() // v1.35.0 - no changes needed to get to time zero
       case 1 => DBIO.seq(NodeStatusTQ.rows.schema.create) // v1.37.0
@@ -134,7 +136,7 @@ object SchemaTQ {
 
   // Returns a sequence of DBIOActions that will upgrade the DB schema from fromSchemaVersion to the latest schema version.
   // It is assumed that this sequence of DBIOActions will be run transactionally.
-  def getUpgradeActionsFrom(fromSchemaVersion: Int)(implicit logger: Logger): DBIO[_] = {
+  def getUpgradeActionsFrom(fromSchemaVersion: Int)(implicit logger: LoggingAdapter): DBIO[_] = {
     if (isLatestSchemaVersion(fromSchemaVersion)) { // nothing to do
       logger.debug("Already at latest DB schema version - nothing to do")
       return DBIO.seq()

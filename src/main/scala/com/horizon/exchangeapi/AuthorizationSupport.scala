@@ -96,7 +96,6 @@ case object FrontendAuth extends Authorization {
   override def specificAccessRequired = Access.NONE // i think this should never be called
 }
 
-/*todo: restore
 case class RequiresAccess(specificAccess: Access) extends Authorization {
   override def as(subject: Subject): Unit = {
     Subject.doAsPrivileged(subject, PermissionCheck(specificAccess.toString), null)
@@ -104,7 +103,6 @@ case class RequiresAccess(specificAccess: Access) extends Authorization {
 
   override def specificAccessRequired = specificAccess
 }
-*/
 
 /** Who is allowed to do what. */
 object Role {

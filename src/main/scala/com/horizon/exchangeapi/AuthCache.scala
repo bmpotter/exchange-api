@@ -2,11 +2,9 @@ package com.horizon.exchangeapi
 
 import java.util.concurrent.TimeUnit
 
+import akka.event.LoggingAdapter
 import com.horizon.exchangeapi.CacheIdType.CacheIdType
 import com.horizon.exchangeapi.tables._
-//import org.scalatra.servlet.ServletApiImplicits
-//import org.scalatra.Control
-import org.slf4j.LoggerFactory
 import slick.jdbc.PostgresProfile.api._
 
 import scala.concurrent.Await
@@ -30,7 +28,9 @@ object CacheIdType extends Enumeration {
 
 /** In-memory cache of the user/pw, node id/token, and agbot id/token, where the pw and tokens are not hashed to speed up validation */
 object AuthCache /* extends Control with ServletApiImplicits */ {
-  val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
+  //val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
+  //def logger: LoggingAdapter = ExchangeApiApp.logger  // <- can't do this because of DelayedInit
+  var logger: LoggingAdapter = _
 
   var cacheType = "" // set from the config file by ExchConfig.load(). Note: currently there is no other value besides guava
 
@@ -61,7 +61,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     def getValidType(creds: Creds, retry: Boolean = false): CacheIdType = {
       logger.debug("CacheId:getValidType(): attempting to authenticate to the exchange with " + creds)
       val cacheValue = getCacheValue(creds)
-      logger.trace("cacheValue: " + cacheValue)
+      logger.debug("cacheValue: " + cacheValue)
       if (cacheValue.isFailure) return CacheIdType.None
       // we got the hashed token from the cache or db, now verify the token passed in
       val cacheVal = cacheValue.get
@@ -159,7 +159,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     def removeOne(id: String): Try[Any] = { remove(id) }
 
     def clearCache(): Try[Unit] = {
-      logger.debug("Clearing the id cache")
+      //logger.debug("Clearing the id cache")
       removeAll().map(_ => ())
 
       // Put the root id/pw back in the cache, so we are never left not being able to do anything to the exchange
@@ -226,7 +226,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     def removeOne(id: String): Try[Any] = { remove(id) }
 
     def clearCache(): Try[Unit] = {
-      logger.debug("Clearing the " + attrName + " cache")
+      //logger.debug("Clearing the " + attrName + " cache")
       removeAll().map(_ => ())
     }
   } // end of class CacheBoolean
@@ -309,7 +309,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     def removeOne(id: String): Try[Any] = { remove(id) }
 
     def clearCache(): Try[Unit] = {
-      logger.debug("Clearing the admin cache")
+      //logger.debug("Clearing the admin cache")
       removeAll().map(_ => ())
     }
   } // end of class CacheOwner
@@ -486,7 +486,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
   }
 
   def initAllCaches(db: Database, includingIbmAuth: Boolean): Unit = {
-    ExchConfig.createRoot(db)
+    ExchConfig.createRoot(db)(logger)
     ids.init(db)
     usersAdmin.init(db)
     nodesOwner.init(db)

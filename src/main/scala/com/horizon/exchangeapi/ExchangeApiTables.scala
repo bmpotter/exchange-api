@@ -2,6 +2,7 @@ package com.horizon.exchangeapi
 
 import java.io._
 
+import akka.event.LoggingAdapter
 import org.json4s._
 import org.json4s.jackson.Serialization.{ read, write }
 import org.slf4j._
@@ -20,11 +21,11 @@ object ExchangeApiTables {
   // Create all of the current version's tables - used in /admin/initdb
   val initDB = DBIO.seq(
     (
-    SchemaTQ.rows.schema ++ OrgsTQ.rows.schema ++ UsersTQ.rows.schema
-    ++ NodesTQ.rows.schema ++ NodeAgreementsTQ.rows.schema ++ NodeStatusTQ.rows.schema ++ NodeErrorTQ.rows.schema ++ NodePolicyTQ.rows.schema
-    ++ AgbotsTQ.rows.schema ++ AgbotAgreementsTQ.rows.schema ++ AgbotPatternsTQ.rows.schema ++ AgbotBusinessPolsTQ.rows.schema
-    ++ NodeMsgsTQ.rows.schema ++ AgbotMsgsTQ.rows.schema
-    ++ ServicesTQ.rows.schema ++ ServiceKeysTQ.rows.schema ++ ServiceDockAuthsTQ.rows.schema ++ ServicePolicyTQ.rows.schema ++ PatternsTQ.rows.schema ++ PatternKeysTQ.rows.schema ++ BusinessPoliciesTQ.rows.schema).create,
+      SchemaTQ.rows.schema ++ OrgsTQ.rows.schema ++ UsersTQ.rows.schema
+      ++ NodesTQ.rows.schema ++ NodeAgreementsTQ.rows.schema ++ NodeStatusTQ.rows.schema ++ NodeErrorTQ.rows.schema ++ NodePolicyTQ.rows.schema
+      ++ AgbotsTQ.rows.schema ++ AgbotAgreementsTQ.rows.schema ++ AgbotPatternsTQ.rows.schema ++ AgbotBusinessPolsTQ.rows.schema
+      ++ NodeMsgsTQ.rows.schema ++ AgbotMsgsTQ.rows.schema
+      ++ ServicesTQ.rows.schema ++ ServiceKeysTQ.rows.schema ++ ServiceDockAuthsTQ.rows.schema ++ ServicePolicyTQ.rows.schema ++ PatternsTQ.rows.schema ++ PatternKeysTQ.rows.schema ++ BusinessPoliciesTQ.rows.schema).create,
     SchemaTQ.getSetVersionAction)
 
   // Alter the schema of existing tables - used to be used in /admin/upgradedb
@@ -61,8 +62,8 @@ object ExchangeApiTables {
   val deleteNewTables = DBIO.seq(sqlu"drop table if exists servicedockauths")
 
   /** Upgrades the db schema, or inits the db if necessary. Called every start up. */
-  def upgradeDb(db: Database): Unit = {
-    val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
+  def upgradeDb(db: Database)(implicit logger: LoggingAdapter): Unit = {
+    //val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
 
     // Run this and wait for it, because we don't want any other initialization occurring until the db is right
     val upgradeNotNeededMsg = "DB schema does not need upgrading, it is already at the latest schema version: "
@@ -79,7 +80,7 @@ object ExchangeApiTables {
             SchemaTQ.getUpgradeActionsFrom(schemaRow.schemaVersion)(logger).transactionally.asTry
           }
         } else {
-          logger.trace("ExchangeApiTables.upgradeDb: success v was empty")
+          logger.debug("ExchangeApiTables.upgradeDb: success v was empty")
           DBIO.failed(new Throwable(ExchangeMessage.translateMessage("db.upgrade.error"))).asTry
         }
         case Failure(t) => if (t.getMessage.contains("""relation "schema" does not exist""")) {

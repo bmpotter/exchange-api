@@ -18,7 +18,7 @@ import scala.util._
 //import javax.ws.rs.{GET, POST, Path}
 import javax.ws.rs.{ GET, Path }
 import akka.actor.ActorSystem
-import akka.event.Logging
+import akka.event.{ Logging, LoggingAdapter }
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
@@ -80,7 +80,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport {
   //implicit val actionPerformedJsonFormat = jsonFormat1(ActionPerformed)
 
   def db: Database = ExchangeApiApp.getDb
-  lazy val logger = Logging(system, classOf[OrgsRoutes])
+  lazy implicit val logger: LoggingAdapter = Logging(system, classOf[OrgsRoutes])
 
   /* when using actors
   implicit def system: ActorSystem
