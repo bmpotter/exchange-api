@@ -2,7 +2,7 @@ package com.horizon.exchangeapi
 
 import java.util.concurrent.TimeUnit
 
-import akka.event.LoggingAdapter
+//import akka.event.LoggingAdapter
 import com.horizon.exchangeapi.CacheIdType.CacheIdType
 import com.horizon.exchangeapi.tables._
 import slick.jdbc.PostgresProfile.api._
@@ -30,7 +30,7 @@ object CacheIdType extends Enumeration {
 object AuthCache /* extends Control with ServletApiImplicits */ {
   //val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
   //def logger: LoggingAdapter = ExchangeApiApp.logger  // <- can't do this because of DelayedInit
-  var logger: LoggingAdapter = _
+  def logger = ExchConfig.logger
 
   var cacheType = "" // set from the config file by ExchConfig.load(). Note: currently there is no other value besides guava
 
@@ -480,13 +480,11 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     servicesPublic.clearCache()
     patternsPublic.clearCache()
     businessPublic.clearCache()
-    /*todo: restore
     if (includingIbmAuth) IbmCloudAuth.clearCache()
-    */
   }
 
   def initAllCaches(db: Database, includingIbmAuth: Boolean): Unit = {
-    ExchConfig.createRoot(db)(logger)
+    ExchConfig.createRoot(db)
     ids.init(db)
     usersAdmin.init(db)
     nodesOwner.init(db)
@@ -497,9 +495,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     servicesPublic.init(db)
     patternsPublic.init(db)
     businessPublic.init(db)
-    /*todo: restore
     if (includingIbmAuth) IbmCloudAuth.init(db)
-    */
   }
 
   // Note: when you add a cache here, also add it to the 2 methods above

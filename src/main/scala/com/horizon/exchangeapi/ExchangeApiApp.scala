@@ -7,6 +7,7 @@
 package com.horizon.exchangeapi
 
 import akka.event.{ Logging, LoggingAdapter }
+//import akka.http.scaladsl.model.headers.HttpCredentials
 import akka.http.scaladsl.server.RouteResult.Rejected
 import akka.http.scaladsl.server.directives.{ DebuggingDirectives, LogEntry }
 import com.mchange.v2.c3p0.ComboPooledDataSource
@@ -23,6 +24,7 @@ import scala.util.{ Failure, Success }
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
+//import akka.http.scaladsl.model.HttpHeader
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server._
 import akka.http.scaladsl.server.Route
@@ -33,8 +35,9 @@ import akka.http.scaladsl.server.Directives._
 import spray.json.DefaultJsonProtocol
 import spray.json._
 
+//import com.typesafe.config.Optional
 import com.typesafe.config._
-import java.util.Base64
+//import java.util.Base64
 
 object ExchangeApiConstants {
   val serviceHost = "localhost"
@@ -65,7 +68,8 @@ object ExchangeApiApp extends App {
 
   //implicit val logger = LoggerFactory.getLogger(ExchConfig.LOGGER)
   /*lazy*/ implicit val logger: LoggingAdapter = Logging(system, classOf[ExchangeApiApp])
-  AuthCache.logger = logger
+  //AuthCache.logger = logger
+  ExchConfig.defaultLogger = logger // need this set in an object that doesn't use DelayedInit
   ExchConfig.createRootInCache()
 
   // Catches rejections from routes and returns the http codes we want
@@ -97,12 +101,13 @@ object ExchangeApiApp extends App {
     case RouteResult.Complete(res) =>
       //todo: put this in Authentication.scala and use here and for rejections
       // First decode the auth and get the org/id
-      val optionalEncodedAuth = req.getHeader("Authorization")
+      val optionalEncodedAuth = req.getHeader("Authorization") // this is type: com.typesafe.config.Optional[akka.http.scaladsl.model.HttpHeader]
       val encodedAuth = if (optionalEncodedAuth.isPresent) optionalEncodedAuth.get().value() else ""
       val R1 = "^Basic ?(.*)$".r
       val authId = encodedAuth match {
         case R1(basicAuthEncoded) =>
-          try {
+          AuthenticationSupport.parseCreds(basicAuthEncoded).map(_.id).getOrElse("<invalid-auth>")
+        /* try {
             val decodedAuthStr = new String(Base64.getDecoder.decode(basicAuthEncoded), "utf-8")
             val R2 = """^(.+):.+\s?$""".r // decode() seems to add a newline at the end
             decodedAuthStr match {
@@ -111,7 +116,7 @@ object ExchangeApiApp extends App {
             }
           } catch {
             case _: IllegalArgumentException => "<invalid-auth>" // this is the exception from decode()
-          }
+          } */
         case _ => "<invalid-auth>"
       }
       // Now log all the info

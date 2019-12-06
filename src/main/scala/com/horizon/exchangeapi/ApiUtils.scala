@@ -18,10 +18,10 @@ import scala.util._
 import java.util.Properties
 
 import ch.qos.logback.classic.Level
+import com.horizon.exchangeapi.auth.AuthException
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
-
 import spray.json.DefaultJsonProtocol
 import spray.json._
 
@@ -72,6 +72,12 @@ trait ExchangeRejection extends Rejection {
   def apiRespCode: String
   def apiRespMsg: String
   def toJsonStr = ApiResponse(apiRespCode, apiRespMsg).toJson.toString()
+}
+
+final case class AuthRejection(authException: AuthException) extends ExchangeRejection {
+  def httpCode = authException.httpCode
+  def apiRespCode = authException.apiResponse
+  def apiRespMsg = authException.getMessage
 }
 
 final case class AccessDeniedRejection(apiRespMsg: String) extends ExchangeRejection {
@@ -134,7 +140,10 @@ object ExchConfig {
   var config = ConfigFactory.parseResources(configResourceName, configOpts) // these are the default values, this file is bundled in the jar
 
   //val LOGGER = "EXCHANGE" //or could use org.slf4j.Logger.ROOT_LOGGER_NAME
-  //val logger: Logger = LoggerFactory.getLogger(LOGGER).asInstanceOf[Logger] //todo: maybe add a custom layout that includes the date: http://logback.qos.ch/manual/layouts.html
+  //val logger: Logger = LoggerFactory.getLogger(LOGGER).asInstanceOf[Logger] //note: maybe add a custom layout that includes the date: http://logback.qos.ch/manual/layouts.html
+  var defaultLogger: LoggingAdapter = _ // this gets set early by ExchangeApiApp
+  def logger = defaultLogger
+
   // Maps log levels expressed as strings in the config file to the slf4j log level enums
   val levels: Map[String, Level] = Map("OFF" -> Level.OFF, "ERROR" -> Level.ERROR, "WARN" -> Level.WARN, "INFO" -> Level.INFO, "DEBUG" -> Level.DEBUG /* , "TRACE" -> Level.TRACE, "ALL" -> Level.ALL */ )
   var rootHashedPw = "" // so we can remember the hashed pw between load() and createRoot()
@@ -168,7 +177,7 @@ object ExchConfig {
   }
 
   // Put the root user in the auth cache in case the db has not been inited yet and they need to be able to run POST /admin/initdb
-  def createRootInCache()(implicit logger: LoggingAdapter): Unit = {
+  def createRootInCache(): Unit = {
     val rootpw = config.getString("api.root.password")
     val rootIsEnabled = config.getBoolean("api.root.enabled")
     if (rootpw == "" || !rootIsEnabled) {
@@ -193,7 +202,7 @@ object ExchConfig {
   def mod(props: Properties): Unit = { config = ConfigFactory.parseProperties(props).withFallback(config) }
 
   /** Create the root user in the DB. This is done separately from load() because we need the db execution context */
-  def createRoot(db: Database)(implicit logger: LoggingAdapter): Unit = {
+  def createRoot(db: Database): Unit = {
     // If the root pw is set in the config file, create or update the root user in the db to match
     val rootpw = config.getString("api.root.password")
     val rootIsEnabled = config.getBoolean("api.root.enabled")

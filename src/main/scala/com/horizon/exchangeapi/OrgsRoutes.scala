@@ -22,6 +22,7 @@ import akka.event.{ Logging, LoggingAdapter }
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
+import com.horizon.exchangeapi.auth.AuthException
 //import akka.http.scaladsl.server.ValidationRejection
 //import com.horizon.exchangeapi.auth._
 import io.swagger.v3.oas.annotations.enums.ParameterIn
@@ -38,6 +39,7 @@ import io.swagger.v3.oas.annotations.media.{ Content, Schema }
 import io.swagger.v3.oas.annotations._
 
 import scala.collection.immutable._
+import scala.util._
 //import scala.concurrent.Future
 
 /* when using actors
@@ -69,7 +71,7 @@ final case class GetOrgsResponse(orgs: Map[String, Org], lastIndex: Int)
 
 /** Routes for /orgs */
 @Path("/orgs")
-class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport {
+class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with AuthenticationSupport {
   // Tell spray how to marshal our types (models) to/from the rest client
   // old way: protected implicit def jsonFormats: Formats
   import DefaultJsonProtocol._
@@ -118,39 +120,41 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport {
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgsGetRoute: Route = (get & path("orgs") & extractCredentials & extractHost & parameter(('orgtype.?, 'label.?))) { (creds, host, orgType, label) =>
-    //todo: consider using the directive https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/security-directives/authenticateBasic.html to authenticate/authorize the client
-    logger.debug(s"Doing GET /orgs with creds:${creds.get.token()}, host:$host, orgType:$orgType, label:$label")
-    //failWith(new InvalidCredentialsException("bad creds"))  // <- this would create an internal error response with a stack trace
-    //if (orgType.isDefined && orgType.get != "IBM") reject(ValidationRejection("bad user input"))
-    //if (orgType.isDefined && orgType.get != "IBM") reject(AccessDeniedRejection("access to orgType really denied"))
-    //todo: add this to messages.txt
-    validate(orgType.isEmpty || orgType.get == "IBM", "orgType must be 'IBM' or blank") {
-      complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
-        /*
-        // If filter is orgType=IBM then it is a different access required than reading all orgs
-        val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
-        authenticate().authorizeTo(TOrg("*"),access)
-        */
-        var q = OrgsTQ.rows.subquery
-        // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
-        orgType match {
-          case Some(oType) => if (oType.contains("%")) q = q.filter(_.orgType like oType) else q = q.filter(_.orgType === oType);
-          case _ => ;
-        }
-        label match {
-          case Some(lab) => if (lab.contains("%")) q = q.filter(_.label like lab) else q = q.filter(_.label === lab);
-          case _ => ;
-        }
+  def orgsGetRoute: Route = (get & path("orgs") & extractCredentials & parameter(('orgtype.?, 'label.?))) { (creds, orgType, label) =>
+    // Note: can't use directive authenticateBasic because it only returns a String and we need to return IIdentity. See: https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/security-directives/authenticateBasic.html
+    logger.debug(s"Doing GET /orgs with creds:$creds, orgType:$orgType, label:$label")
+    authenticate(creds) match {
+      case Failure(authException: AuthException) => reject(AuthRejection(authException))
+      case Failure(t) => failWith(t)
+      case Success(authenticatedIdentity) =>
+        validate(orgType.isEmpty || orgType.get == "IBM", ExchangeMessage.translateMessage("org.get.orgtype")) {
+          complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
+            logger.debug("GET /orgs identity: " + authenticatedIdentity.identity)
+            /*
+            // If filter is orgType=IBM then it is a different access required than reading all orgs
+            val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
+            authenticate().authorizeTo(TOrg("*"),access)
+            */
+            var q = OrgsTQ.rows.subquery
+            // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
+            orgType match {
+              case Some(oType) => if (oType.contains("%")) q = q.filter(_.orgType like oType) else q = q.filter(_.orgType === oType);
+              case _ => ;
+            }
+            label match {
+              case Some(lab) => if (lab.contains("%")) q = q.filter(_.label like lab) else q = q.filter(_.label === lab);
+              case _ => ;
+            }
 
-        db.run(q.result).map({ list =>
-          logger.debug("GET /orgs result size: " + list.size)
-          val orgs = list.map(a => a.orgId -> a.toOrg).toMap
-          val code = if (orgs.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
+            db.run(q.result).map({ list =>
+              logger.debug("GET /orgs result size: " + list.size)
+              val orgs = list.map(a => a.orgId -> a.toOrg).toMap
+              val code = if (orgs.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
 
-          (code, GetOrgsResponse(orgs, 0))
-        })
-      })
+              (code, GetOrgsResponse(orgs, 0))
+            })
+          })
+        }
     }
   }
 

@@ -2,16 +2,19 @@ package com.horizon.exchangeapi
 
 //import java.time.Clock
 
-//import com.horizon.exchangeapi.auth.{ AuthErrors, ExchCallbackHandler }
-//import javax.security.auth.login.LoginContext
+import akka.event.LoggingAdapter
+import akka.http.scaladsl.model.headers.HttpCredentials
+import com.horizon.exchangeapi.auth.{ ExchCallbackHandler, InvalidCredentialsException }
+import javax.security.auth.login.LoginContext
 import org.mindrot.jbcrypt.BCrypt
 //import org.scalatra.ScalatraBase
 //import org.slf4j.Logger
 import pdi.jwt.{ Jwt, JwtAlgorithm, JwtClaim }
-//import slick.jdbc.PostgresProfile.api._
+import slick.jdbc.PostgresProfile.api._
 
-//import scala.collection.JavaConverters._
-//import scala.util._
+import scala.collection.JavaConverters._
+import scala.util._
+import java.util.Base64
 
 /* Used by all routes classes to Authenticates the client credentials and then checks the ACLs for authorization.
 The main authenticate/authorization flow is:
@@ -30,13 +33,40 @@ The main authenticate/authorization flow is:
         - AccessController.checkPermission()
           - i think this looks in resources/auth.policy at the roles and accesses defined for each
 */
-trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
+object AuthenticationSupport {
+  def logger = ExchConfig.logger
+
+  // Decodes the basic auth and parses it to return Some(Creds) or None if the creds weren't there or weren't parsable
+  // Note: this is in the object, not the trait, so we can also use it from ExchangeApiApp for logging of each request
+  def parseCreds(encodedAuth: String): Option[Creds] = {
+    //val encodedAuth = optionalEncodedAuth.getOrElse("")
+    //val R1 = "^Basic ?(.*)$".r
+    //encodedAuth match {
+    //case R1(basicAuthEncoded) =>
+    try {
+      val decodedAuthStr = new String(Base64.getDecoder.decode(encodedAuth), "utf-8")
+      //todo: compile this regex
+      val R2 = """^(.+):(.+)\s?$""".r // decode() seems to add a newline at the end
+      decodedAuthStr match {
+        case R2(id, tok) => /*logger.trace("id="+id+",tok="+tok+".");*/ Some(Creds(id, tok))
+        case _ => None
+      }
+    } catch {
+      case _: IllegalArgumentException => None // this is the exception from decode()
+    }
+    //case _ => None
+    //}
+  }
+}
+
+trait AuthenticationSupport extends AuthorizationSupport {
   // We could add a before action with before() {}, but sometimes they need to pass in user/pw, and sometimes id/token
   // I tried using code from http://www.scalatra.org/2.4/guides/http/authentication.html, but it throws an exception.
 
   def db: Database // get access to the db object in ExchangeApiApp
-  implicit def logger: Logger // get access to the logger object in ExchangeApiApp
+  implicit def logger: LoggingAdapter
 
+  //todo: i think this needs to be moved to an object to have a single value
   var migratingDb = false // used to lock everyone out during db migration
   def isDbMigration = migratingDb
   // def setDbMigration(dbMigration: Boolean): Unit = { migratingDb = dbMigration }
@@ -44,18 +74,23 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
   /* Used to authenticate and log all the routes, returning an authenticated Identity, which can
    * be used for authorization, or halting the request due to invalid credentials.
    */
-  def authenticate(anonymousOk: Boolean = false, hint: String = ""): AuthenticatedIdentity = {
+  def authenticate(optionalHttpCredentials: Option[HttpCredentials], hint: String = ""): Try[AuthenticatedIdentity] = {
     /*
      * For JAAS, the LoginContext is what you use to attempt to login a user
      * and get a Subject back. It takes care of creating the LoginModules and
      * calling them. It is configured by the jaas.config file, which specifies
      * which LoginModules to use.
      */
+    val encodedAuth = optionalHttpCredentials.map(_.token()).getOrElse("")
+    val creds = AuthenticationSupport.parseCreds(encodedAuth)
+    logger.debug(s"authenticate: $creds")
+    if (creds.isEmpty) return Failure(new InvalidCredentialsException)
     val loginCtx = new LoginContext(
       "ExchangeApiLogin", // this is referencing a stanza in resources/jaas.config
-      new ExchCallbackHandler(RequestInfo(request, params, isDbMigration, anonymousOk, hint)))
+      new ExchCallbackHandler(RequestInfo(creds.get, /*request, params,*/ isDbMigration /*, anonymousOk*/ , hint)))
     for (err <- Try(loginCtx.login()).failed) {
-      // An auth exception, log it, then halt
+      return Failure(err)
+      /* An auth exception, log it, then halt
       try {
         val creds = getCredentials(request, params, anonymousOk) // can throw InvalidCredentialsException
         val clientIp = request.header("X-Forwarded-For").orElse(Option(request.getRemoteAddr)).get // haproxy inserts the real client ip into the header for us
@@ -67,12 +102,13 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
         case e: Exception =>
           val (httpCode, apiResponse, msg) = AuthErrors.message(e)
           halt(httpCode, ApiResponse(apiResponse, msg))
-      }
+      } */
     }
     val subject = loginCtx.getSubject
-    AuthenticatedIdentity(subject.getPrivateCredentials(classOf[Identity]).asScala.head, subject)
+    return Success(AuthenticatedIdentity(subject.getPrivateCredentials(classOf[Identity]).asScala.head, subject))
   }
 
+  /*
   // Only used by unauthenticated (anonymous) rest api methods
   def credsAndLogForAnonymous() = {
     val clientIp = request.header("X-Forwarded-For").orElse(Option(request.getRemoteAddr)).get // haproxy inserts the real client ip into the header for us
@@ -94,7 +130,7 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
     val frontEndHeader = ExchConfig.config.getString("api.root.frontEndHeader")
     if (frontEndHeader == "" || request.getHeader(frontEndHeader) == null) return null
     logger.trace("request.headers: " + request.headers.toString())
-    //todo: For now the only front end we support is data power doing the authentication and authorization. Create a plugin architecture.
+    //note: For now the only front end we support is data power doing the authentication and authorization. Create a plugin architecture.
     // Data power calls us similar to: curl -u '{username}:{password}' 'https://{serviceURL}' -H 'type:{subjectType}' -H 'id:{username}' -H 'orgid:{org}' -H 'issuer:IBM_ID' -H 'Content-Type: application/json'
     // type: person (user logged into the dashboard), app (API Key), or dev (device/gateway)
     //val idType = request.getHeader("type")
@@ -122,6 +158,7 @@ trait AuthenticationSupport extends ScalatraBase with AuthorizationSupport {
         halt(httpCode, ApiResponse(apiResponse, msg))
     }
   }
+  */
 
   /** Returns a temporary pw reset token. */
   def createToken(username: String): String = {

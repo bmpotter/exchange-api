@@ -200,6 +200,7 @@ node.msg.deleted=node msg deleted
 node.msg.not.found=msg ''{0}'' for node ''{1}'' not found
 node.msg.not.deleted=msg ''{0}'' for node ''{1}'' not deleted: {2}
 org.attr.not.part.of.org=Org attribute name ''{0}'' is not an attribute of the org resource.
+org.get.orgtype=orgType must be ''IBM'' or blank
 org.created=org ''{0}'' created
 org.not.created=org ''{0}'' not created: {1}
 org.already.exists=org ''{0}'' already exists: {1}

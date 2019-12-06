@@ -1,17 +1,16 @@
 package com.horizon.exchangeapi
 
-/*
-import java.util.Base64
+//import java.util.Base64
 
+import akka.event.LoggingAdapter
 import com.horizon.exchangeapi.auth.InvalidCredentialsException
 import com.horizon.exchangeapi.auth.PermissionCheck
-import javax.servlet.http.HttpServletRequest
-import org.scalatra.servlet.ServletApiImplicits
-import org.scalatra.{Control, Params}
-import org.slf4j.Logger
+//import javax.servlet.http.HttpServletRequest
+//import org.scalatra.servlet.ServletApiImplicits
+//import org.scalatra.{Control, Params}
+//import org.slf4j.Logger
 
 import scala.collection.JavaConverters._
-*/
 import javax.security.auth.Subject
 
 /** The list of access rights. */
@@ -90,11 +89,15 @@ sealed trait Authorization {
   def specificAccessRequired: Access
 }
 
+case object h { def halt(httpCode: Int, apiResp: ApiResponse) = null }  //todo:
+
+/*
 case object FrontendAuth extends Authorization {
   override def as(subject: Subject): Unit = {}
 
   override def specificAccessRequired = Access.NONE // i think this should never be called
 }
+*/
 
 case class RequiresAccess(specificAccess: Access) extends Authorization {
   override def as(subject: Subject): Unit = {
@@ -165,8 +168,8 @@ object Role {
 }
 
 case class Creds(id: String, token: String) { // id and token are generic names and their values can actually be username and password
-  def isAnonymous: Boolean = (id == "" && token == "")
-  //todo: add an optional hint to this so when they specify creds as username/password we know to try to authenticate as a user 1st
+  //def isAnonymous: Boolean = (id == "" && token == "")
+  //someday: maybe add an optional hint to this so when they specify creds as username/password we know to try to authenticate as a user 1st
 }
 
 case class OrgAndId(org: String, id: String) {
@@ -206,12 +209,12 @@ case class CompositeId(compositeId: String) {
   }
 }
 
-/*todo: restore
 case class RequestInfo(
-  request: HttpServletRequest,
-  params: Params,
+  creds: Creds,
+  //request: HttpServletRequest,
+  //params: Params,
   dbMigration: Boolean,
-  anonymousOk: Boolean,
+  //anonymousOk: Boolean,
   hint: String,
 )
 
@@ -223,25 +226,25 @@ It contains several authentication utilities:
   - all the Identity subclasses (used for local authentication)
   - all the Target subclasses (used for authorization)
  */
-trait AuthorizationSupport extends Control with ServletApiImplicits {
-  implicit def logger: Logger
+trait AuthorizationSupport {
+  implicit def logger: LoggingAdapter
 
   /** Returns true if the token is correct for this user and not expired */
   def isTokenValid(token: String, username: String): Boolean = {
     // Get their current hashed pw to use as the secret
     AuthCache.getUser(username) match {
       case Some(userHashedTok) => Token.isValid(token, userHashedTok)
-      case None => halt(HttpCode.NOT_FOUND, ApiResponse(ApiResponseType.BADCREDS, ExchangeMessage.translateMessage("invalid.credentials")))
+      case None => false  //todo: halt(HttpCode.NOT_FOUND, ApiResponse(ApiResponseType.BADCREDS, ExchangeMessage.translateMessage("invalid.credentials")))
     }
   }
 
-  // Only used from the jaas local authentication module.
+  /* Only used from the jaas local authentication module.
   def frontEndCreds(info: RequestInfo): Identity = {
     val request = info.request
     val frontEndHeader = ExchConfig.config.getString("api.root.frontEndHeader")
     if (frontEndHeader == "" || request.getHeader(frontEndHeader) == null) return null
     logger.trace("request.headers: "+request.headers.toString())
-    //todo: For now the only front end we support is data power doing the authentication and authorization. Create a plugin architecture.
+    //note: For now the only front end we support is data power doing the authentication and authorization. Create a plugin architecture.
     // Data power calls us similar to: curl -u '{username}:{password}' 'https://{serviceURL}' -H 'type:{subjectType}' -H 'id:{username}' -H 'orgid:{org}' -H 'issuer:IBM_ID' -H 'Content-Type: application/json'
     // type: person (user logged into the dashboard), app (API Key), or dev (device/gateway)
     val idType = request.getHeader("type")
@@ -257,7 +260,7 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
     }
     identity.hasFrontEndAuthority = true
     return identity
-  }
+  } */
 
   /** Looks in the http header and url params for credentials and returns them. Supported:
     * Basic auth in header in clear text: Authorization:Basic <user-or-id>:<pw-or-token>
@@ -265,7 +268,6 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
     * URL params: username=<user>&password=<pw>
     * URL params: id=<id>&token=<token>
     * param anonymousOk True means this method will not halt with error msg if no credentials are found
-    */
   def credentials(info: RequestInfo): Creds = {
     val RequestInfo(request, params, _, anonymousOk, _) = info
     getCredentials(request, params, anonymousOk)
@@ -304,8 +306,10 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
       }
     }
   }
+  */
 
   // Embodies both the exchange-specific Identity, and the JAAS/javax.security.auth Subject
+  // Note: this is defined here, instead of AuthenticationSupport, because its authorizeTo() method uses this class extensively
   case class AuthenticatedIdentity(identity: Identity, subject: Subject) {
     def authorizeTo(target: Target, access: Access): Identity = {
       var requiredAccess: Authorization = RequiresAccess(Access.NONE)
@@ -332,7 +336,7 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
             identity
         }
       } catch {
-        case _: Exception => halt(
+        case _: Exception => h.halt(
           HttpCode.ACCESS_DENIED,
           ApiResponse(ApiResponseType.ACCESS_DENIED, identity.accessDeniedMsg(requiredAccess.specificAccessRequired))
         )
@@ -350,16 +354,17 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
     def toIAnonymous = IAnonymous(Creds("",""))
     def isSuperUser = false       // IUser overrides this
     def isAdmin = false       // IUser overrides this
-    def isAnonymous = creds.isAnonymous
+    def isAnonymous = false // = creds.isAnonymous
     def identityString = creds.id     // for error msgs
     def accessDeniedMsg(access: Access) = ExchangeMessage.translateMessage("access.denied.no.auth", identityString, access)
-    var hasFrontEndAuthority = false   // true if this identity was already vetted by the front end
+    //var hasFrontEndAuthority = false   // true if this identity was already vetted by the front end
     def isMultiTenantAgbot: Boolean = return false
 
     // Called by auth/Module.login() to authenticate a local user/node/agbot
+    // Note: this is defined here, instead of AuthenticationSupport, because this class is already set up to use AuthCache
     def authenticate(hint: String = ""): Identity = {
-      if (hasFrontEndAuthority) return this       // it is already a specific subclass
-      if (creds.isAnonymous) return toIAnonymous
+      //if (hasFrontEndAuthority) return this       // it is already a specific subclass
+      //if (creds.isAnonymous) return toIAnonymous
       if (hint == "token") {
         if (isTokenValid(creds.token, creds.id)) return toIUser
         //else throw new InvalidCredentialsException("invalid token")  <- hint==token means it *could* be a token, not that it *must* be
@@ -404,6 +409,7 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
     }
   }
 
+  /*
   case class IFrontEnd(creds: Creds) extends Identity {
     override def authenticate(hint: String) = {
       if (ExchConfig.config.getString("api.root.frontEndHeader") == creds.id) this    // let everything thru
@@ -414,6 +420,7 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
       else halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, ExchangeMessage.translateMessage("access.denied.no.exchange.front.end")))
     }
   }
+  */
 
   case class IUser(creds: Creds) extends Identity {
     override def isSuperUser = Role.isSuperUser(creds.id)
@@ -424,7 +431,7 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
       else AuthRoles.User
 
     override def authorizeTo(target: Target, access: Access): Authorization = {
-      if (hasFrontEndAuthority) return FrontendAuth // allow whatever it wants to do
+      //if (hasFrontEndAuthority) return FrontendAuth // allow whatever it wants to do
       val requiredAccess =
         // Transform any generic access into specific access
         if (!isMyOrg(target) && !target.isPublic) {
@@ -520,7 +527,7 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
     override lazy val role = AuthRoles.Node
 
     def authorizeTo(target: Target, access: Access): Authorization = {
-      if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
+      //if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
       // Transform any generic access into specific access
       val requiredAccess =
         if (!isMyOrg(target) && !target.isPublic && !isMsgToMultiTenantAgbot(target,access)) {
@@ -589,7 +596,7 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
     override lazy val role = AuthRoles.Agbot
 
     def authorizeTo(target: Target, access: Access): Authorization = {
-      if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
+      //if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
       // Transform any generic access into specific access
       val requiredAccess =
         if (!isMyOrg(target) && !target.isPublic && !isMultiTenantAgbot) {
@@ -654,8 +661,8 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
 
   case class IApiKey(creds: Creds) extends Identity {
     def authorizeTo(target: Target, access: Access): Authorization = {
-      if (hasFrontEndAuthority) return FrontendAuth // allow whatever it wants to do
-      halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, accessDeniedMsg(access))) // should not ever get here
+      //if (hasFrontEndAuthority) return FrontendAuth // allow whatever it wants to do
+      h.halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, accessDeniedMsg(access))) // should not ever get here
     }
   }
 
@@ -771,4 +778,3 @@ trait AuthorizationSupport extends Control with ServletApiImplicits {
   }
   case class TAction(id: String = "") extends Target    // for post rest api methods that do not target any specific resource (e.g. admin operations)
 }
-*/
