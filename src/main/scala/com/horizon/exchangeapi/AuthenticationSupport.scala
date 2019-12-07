@@ -1,14 +1,17 @@
 package com.horizon.exchangeapi
 
-//import java.time.Clock
-
 import akka.event.LoggingAdapter
 import akka.http.scaladsl.model.headers.HttpCredentials
-import com.horizon.exchangeapi.auth.{ ExchCallbackHandler, InvalidCredentialsException }
+import com.horizon.exchangeapi.Access.Access
+
+import scala.util.matching.Regex
+//import akka.http.scaladsl.server.{Directive, Directive1}
+//import akka.http.scaladsl.server.Directives._
+//import akka.http.scaladsl.server.directives.Credentials
+//import akka.http.scaladsl.server.Route
+import com.horizon.exchangeapi.auth._
 import javax.security.auth.login.LoginContext
 import org.mindrot.jbcrypt.BCrypt
-//import org.scalatra.ScalatraBase
-//import org.slf4j.Logger
 import pdi.jwt.{ Jwt, JwtAlgorithm, JwtClaim }
 import slick.jdbc.PostgresProfile.api._
 
@@ -35,27 +38,20 @@ The main authenticate/authorization flow is:
 */
 object AuthenticationSupport {
   def logger = ExchConfig.logger
+  val decodedAuthRegex = new Regex("""^(.+):(.+)\s?$""")
 
-  // Decodes the basic auth and parses it to return Some(Creds) or None if the creds weren't there or weren't parsable
+  // Decodes the basic auth and parses it to return Some(Creds) or None if the creds aren't there or aren't parsable
   // Note: this is in the object, not the trait, so we can also use it from ExchangeApiApp for logging of each request
   def parseCreds(encodedAuth: String): Option[Creds] = {
-    //val encodedAuth = optionalEncodedAuth.getOrElse("")
-    //val R1 = "^Basic ?(.*)$".r
-    //encodedAuth match {
-    //case R1(basicAuthEncoded) =>
     try {
       val decodedAuthStr = new String(Base64.getDecoder.decode(encodedAuth), "utf-8")
-      //todo: compile this regex
-      val R2 = """^(.+):(.+)\s?$""".r // decode() seems to add a newline at the end
       decodedAuthStr match {
-        case R2(id, tok) => /*logger.trace("id="+id+",tok="+tok+".");*/ Some(Creds(id, tok))
+        case decodedAuthRegex(id, tok) => /*logger.trace("id="+id+",tok="+tok+".");*/ Some(Creds(id, tok))
         case _ => None
       }
     } catch {
       case _: IllegalArgumentException => None // this is the exception from decode()
     }
-    //case _ => None
-    //}
   }
 }
 
@@ -70,6 +66,41 @@ trait AuthenticationSupport extends AuthorizationSupport {
   var migratingDb = false // used to lock everyone out during db migration
   def isDbMigration = migratingDb
   // def setDbMigration(dbMigration: Boolean): Unit = { migratingDb = dbMigration }
+
+  /*someday: try to create a customer direcive. Below didn't work
+  def authenticateExch(optionalHttpCredentials: Option[HttpCredentials], hint: String = ""): Directive1[AuthenticatedIdentity] =
+    Directive { inner =>
+      authenticate(optionalHttpCredentials, hint) match {
+        case Failure(authException: AuthException) => reject(AuthRejection(authException))
+        case Failure(t) => failWith(t) // just to satisfy the compiler, should never get here
+        case Success(authenticatedIdentity) => inner((authenticatedIdentity,))
+      }
+    }
+  */
+
+  /*someday: tried to use this in the akka authenticateBasic directive, but couldn't quite get the compiler to be happy
+  def exchangeAuth(credentials: Credentials): Option[AuthenticatedIdentity] = {
+    logger.debug(s"exchangeAuth: credentials: $credentials")
+    credentials match {
+      case pw @ Credentials.Provided(id) =>
+        authenticate(Creds("foo", "bar")) match {
+          case Failure(_: AuthException) => None
+          case Failure(_) => None // just to satisfy the compiler, should never get here
+          case Success(authenticatedIdentity) => Some(authenticatedIdentity)
+        }
+      case _ => None
+    }
+  }
+  */
+
+  // Tries to do both authentication and then authorization. If successful, returns Identity. Otherwise returns an AuthException subclass
+  def auth(optionalHttpCredentials: Option[HttpCredentials], target: Target, access: Access, hint: String = ""): Try[Identity] = {
+    authenticate(optionalHttpCredentials) match {
+      case Failure(t) => Failure(t)
+      case Success(authenticatedIdentity) =>
+        authenticatedIdentity.authorizeTo(target, access)
+    }
+  }
 
   /* Used to authenticate and log all the routes, returning an authenticated Identity, which can
    * be used for authorization, or halting the request due to invalid credentials.
@@ -90,75 +121,10 @@ trait AuthenticationSupport extends AuthorizationSupport {
       new ExchCallbackHandler(RequestInfo(creds.get, /*request, params,*/ isDbMigration /*, anonymousOk*/ , hint)))
     for (err <- Try(loginCtx.login()).failed) {
       return Failure(err)
-      /* An auth exception, log it, then halt
-      try {
-        val creds = getCredentials(request, params, anonymousOk) // can throw InvalidCredentialsException
-        val clientIp = request.header("X-Forwarded-For").orElse(Option(request.getRemoteAddr)).get // haproxy inserts the real client ip into the header for us
-        //logger.trace("in AuthenticationSupport.authenticate: err="+err)
-        val (httpCode, apiResponse, msg) = AuthErrors.message(err)
-        logger.error("User or id " + creds.id + " from " + clientIp + " running " + request.getMethod + " " + request.getPathInfo + ": " + apiResponse + ": " + msg)
-        halt(httpCode, ApiResponse(apiResponse, msg))
-      } catch {
-        case e: Exception =>
-          val (httpCode, apiResponse, msg) = AuthErrors.message(e)
-          halt(httpCode, ApiResponse(apiResponse, msg))
-      } */
     }
     val subject = loginCtx.getSubject
     return Success(AuthenticatedIdentity(subject.getPrivateCredentials(classOf[Identity]).asScala.head, subject))
   }
-
-  /*
-  // Only used by unauthenticated (anonymous) rest api methods
-  def credsAndLogForAnonymous() = {
-    val clientIp = request.header("X-Forwarded-For").orElse(Option(request.getRemoteAddr)).get // haproxy inserts the real client ip into the header for us
-
-    val feCreds = frontEndCredsForAnonymous()
-    if (feCreds != null) {
-      logger.info("User or id " + feCreds.id + " from " + clientIp + " (via front end) running " + request.getMethod + " " + request.getPathInfo)
-    }
-    // else, fall thru to the next section
-
-    // Get the creds from the header or params
-    val creds = credsForAnonymous()
-    val userOrId = if (creds.isAnonymous) "(anonymous)" else creds.id
-    logger.info("User or id " + userOrId + " from " + clientIp + " running " + request.getMethod + " " + request.getPathInfo)
-    if (isDbMigration && !Role.isSuperUser(creds.id)) halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, ExchangeMessage.translateMessage("db.migration.in.progress")))
-  }
-
-  def frontEndCredsForAnonymous(): Creds = {
-    val frontEndHeader = ExchConfig.config.getString("api.root.frontEndHeader")
-    if (frontEndHeader == "" || request.getHeader(frontEndHeader) == null) return null
-    logger.trace("request.headers: " + request.headers.toString())
-    //note: For now the only front end we support is data power doing the authentication and authorization. Create a plugin architecture.
-    // Data power calls us similar to: curl -u '{username}:{password}' 'https://{serviceURL}' -H 'type:{subjectType}' -H 'id:{username}' -H 'orgid:{org}' -H 'issuer:IBM_ID' -H 'Content-Type: application/json'
-    // type: person (user logged into the dashboard), app (API Key), or dev (device/gateway)
-    //val idType = request.getHeader("type")
-    val orgid = request.getHeader("orgid")
-    val id = request.getHeader("id")
-    if (id == null || orgid == null) halt(HttpCode.INTERNAL_ERROR, ApiResponse(ApiResponseType.INTERNAL_ERROR, ExchangeMessage.translateMessage("required.headers.not.set", frontEndHeader)))
-    val creds = Creds(OrgAndIdCred(orgid, id).toString, "") // we don't have a pw/token, so leave it blank
-    return creds
-  }
-
-  /**
-   * Looks in the http header and url params for credentials and returns them. Currently only used by credsAndLog(),
-   * which is only used for unauthenticated (anonymous) APIs. Supported:
-   * Basic auth in header in clear text: Authorization:Basic <user-or-id>:<pw-or-token>
-   * Basic auth in header base64 encoded: Authorization:Basic <base64-encoded-of-above>
-   * URL params: username=<user>&password=<pw>
-   * URL params: id=<id>&token=<token>
-   */
-  def credsForAnonymous(): Creds = {
-    try {
-      getCredentials(request, params, anonymousOk = true) // can throw InvalidCredentialsException
-    } catch {
-      case e: Exception =>
-        val (httpCode, apiResponse, msg) = AuthErrors.message(e)
-        halt(httpCode, ApiResponse(apiResponse, msg))
-    }
-  }
-  */
 
   /** Returns a temporary pw reset token. */
   def createToken(username: String): String = {

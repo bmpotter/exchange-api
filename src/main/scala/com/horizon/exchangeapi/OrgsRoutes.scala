@@ -22,7 +22,7 @@ import akka.event.{ Logging, LoggingAdapter }
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import com.horizon.exchangeapi.auth.AuthException
+//import com.horizon.exchangeapi.auth.AuthException
 //import akka.http.scaladsl.server.ValidationRejection
 //import com.horizon.exchangeapi.auth._
 import io.swagger.v3.oas.annotations.enums.ParameterIn
@@ -121,20 +121,15 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
   def orgsGetRoute: Route = (get & path("orgs") & extractCredentials & parameter(('orgtype.?, 'label.?))) { (creds, orgType, label) =>
-    // Note: can't use directive authenticateBasic because it only returns a String and we need to return IIdentity. See: https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/security-directives/authenticateBasic.html
     logger.debug(s"Doing GET /orgs with creds:$creds, orgType:$orgType, label:$label")
-    authenticate(creds) match {
-      case Failure(authException: AuthException) => reject(AuthRejection(authException))
-      case Failure(t) => failWith(t)
-      case Success(authenticatedIdentity) =>
+    // If filter is orgType=IBM then it is a different access required than reading all orgs
+    val access = if (orgType.getOrElse("").contains("IBM")) Access.READ_IBM_ORGS else Access.READ // read all orgs
+    auth(creds, TOrg("*"), access) match {
+      case Failure(t) => reject(AuthRejection(t))
+      case Success(identity) =>
         validate(orgType.isEmpty || orgType.get == "IBM", ExchangeMessage.translateMessage("org.get.orgtype")) {
           complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
-            logger.debug("GET /orgs identity: " + authenticatedIdentity.identity)
-            /*
-            // If filter is orgType=IBM then it is a different access required than reading all orgs
-            val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
-            authenticate().authorizeTo(TOrg("*"),access)
-            */
+            logger.debug("GET /orgs identity: " + identity)
             var q = OrgsTQ.rows.subquery
             // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
             orgType match {
@@ -153,9 +148,9 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with
 
               (code, GetOrgsResponse(orgs, 0))
             })
-          })
-        }
-    }
+          }) // end of complete
+        } // end of validate
+    } // end of auth match
   }
 
   /*

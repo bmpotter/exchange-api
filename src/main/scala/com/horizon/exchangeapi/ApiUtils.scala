@@ -74,10 +74,20 @@ trait ExchangeRejection extends Rejection {
   def toJsonStr = ApiResponse(apiRespCode, apiRespMsg).toJson.toString()
 }
 
-final case class AuthRejection(authException: AuthException) extends ExchangeRejection {
-  def httpCode = authException.httpCode
-  def apiRespCode = authException.apiResponse
-  def apiRespMsg = authException.getMessage
+// Converts an exception into an auth rejection
+final case class AuthRejection(t: Throwable) extends ExchangeRejection {
+  def httpCode = t match {
+    case e: AuthException => e.httpCode
+    case _ => StatusCodes.Unauthorized // should never get here
+  }
+  def apiRespCode = t match {
+    case e: AuthException => e.apiResponse
+    case _ => "invalid-credentials" // should never get here
+  }
+  def apiRespMsg = t match {
+    case e: AuthException => e.getMessage
+    case _ => "invalid credentials" // should never get here
+  }
 }
 
 final case class AccessDeniedRejection(apiRespMsg: String) extends ExchangeRejection {

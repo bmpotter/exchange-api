@@ -3,8 +3,9 @@ package com.horizon.exchangeapi
 //import java.util.Base64
 
 import akka.event.LoggingAdapter
-import com.horizon.exchangeapi.auth.InvalidCredentialsException
-import com.horizon.exchangeapi.auth.PermissionCheck
+import com.horizon.exchangeapi.auth._
+
+import scala.util._
 //import javax.servlet.http.HttpServletRequest
 //import org.scalatra.servlet.ServletApiImplicits
 //import org.scalatra.{Control, Params}
@@ -88,8 +89,6 @@ sealed trait Authorization {
   def as(subject: Subject): Unit
   def specificAccessRequired: Access
 }
-
-case object h { def halt(httpCode: Int, apiResp: ApiResponse) = null }  //todo:
 
 /*
 case object FrontendAuth extends Authorization {
@@ -234,84 +233,16 @@ trait AuthorizationSupport {
     // Get their current hashed pw to use as the secret
     AuthCache.getUser(username) match {
       case Some(userHashedTok) => Token.isValid(token, userHashedTok)
-      case None => false  //todo: halt(HttpCode.NOT_FOUND, ApiResponse(ApiResponseType.BADCREDS, ExchangeMessage.translateMessage("invalid.credentials")))
+      case None => throw new InvalidCredentialsException(ExchangeMessage.translateMessage("invalid.credentials"))
     }
   }
-
-  /* Only used from the jaas local authentication module.
-  def frontEndCreds(info: RequestInfo): Identity = {
-    val request = info.request
-    val frontEndHeader = ExchConfig.config.getString("api.root.frontEndHeader")
-    if (frontEndHeader == "" || request.getHeader(frontEndHeader) == null) return null
-    logger.trace("request.headers: "+request.headers.toString())
-    //note: For now the only front end we support is data power doing the authentication and authorization. Create a plugin architecture.
-    // Data power calls us similar to: curl -u '{username}:{password}' 'https://{serviceURL}' -H 'type:{subjectType}' -H 'id:{username}' -H 'orgid:{org}' -H 'issuer:IBM_ID' -H 'Content-Type: application/json'
-    // type: person (user logged into the dashboard), app (API Key), or dev (device/gateway)
-    val idType = request.getHeader("type")
-    val orgid = request.getHeader("orgid")
-    val id = request.getHeader("id")
-    if (idType == null || id == null || orgid == null) halt(HttpCode.INTERNAL_ERROR, ApiResponse(ApiResponseType.INTERNAL_ERROR, ExchangeMessage.translateMessage("required.headers.not.set", frontEndHeader)))
-    val creds = Creds(OrgAndIdCred(orgid,id).toString, "")    // we don't have a pw/token, so leave it blank
-    val identity: Identity = idType match {
-      case "person" => IUser(creds)
-      case "app" => IApiKey(creds)
-      case "dev" => INode(creds)
-      case _ => halt(HttpCode.INTERNAL_ERROR, ApiResponse(ApiResponseType.INTERNAL_ERROR, ExchangeMessage.translateMessage("unexpected.identity", idType)))
-    }
-    identity.hasFrontEndAuthority = true
-    return identity
-  } */
-
-  /** Looks in the http header and url params for credentials and returns them. Supported:
-    * Basic auth in header in clear text: Authorization:Basic <user-or-id>:<pw-or-token>
-    * Basic auth in header base64 encoded: Authorization:Basic <base64-encoded-of-above>
-    * URL params: username=<user>&password=<pw>
-    * URL params: id=<id>&token=<token>
-    * param anonymousOk True means this method will not halt with error msg if no credentials are found
-  def credentials(info: RequestInfo): Creds = {
-    val RequestInfo(request, params, _, anonymousOk, _) = info
-    getCredentials(request, params, anonymousOk)
-  }
-
-  // Used by both credentials() and AuthenticationSupport:credsForAnonymous()
-  def getCredentials(request: HttpServletRequest, params: Params, anonymousOk: Boolean = false): Creds = {
-    val auth = Option(request.getHeader("Authorization"))
-    auth match {
-      case Some(authStr) => val R1 = "^Basic ?(.*)$".r
-        authStr match {
-          case R1(basicAuthStr) => var basicAuthStr2 = ""
-            if (basicAuthStr.contains(":")) basicAuthStr2 = basicAuthStr
-            else {
-              try { basicAuthStr2 = new String(Base64.getDecoder.decode(basicAuthStr), "utf-8") }
-              catch { case _: IllegalArgumentException => halt(HttpCode.BADCREDS, ApiResponse(ApiResponseType.BADCREDS, ExchangeMessage.translateMessage("bad.auth.header"))) }
-            }
-            val R2 = """^(.+):(.+)\s?$""".r      // decode() seems to add a newline at the end
-            basicAuthStr2 match {
-              case R2(id,tok) => /*logger.trace("id="+id+",tok="+tok+".");*/ Creds(id,tok)
-              case _ => throw new InvalidCredentialsException(ExchangeMessage.translateMessage("invalid.credentials.string", basicAuthStr))
-            }
-          case _ => throw new InvalidCredentialsException(ExchangeMessage.translateMessage("only.use.basic.auth"))
-        }
-      // Not in the header, look in the url query string. Parameters() gives you the params after "?". Params() gives you the routes variables (if they have same name)
-      case None => (params.get("orgid"), request.parameters.get("id").orElse(params.get("id")), request.parameters.get("token")) match {
-        case (Some(org), Some(id), Some(tok)) => Creds(OrgAndIdCred(org,id).toString,tok)
-        case (None, Some(id), Some(tok)) => Creds(OrgAndIdCred("",id).toString,tok)   // this is when they are querying /orgs so there is not org
-        // Did not find id/token, so look for username/password
-        case _ => (params.get("orgid"), request.parameters.get("username").orElse(params.get("username")), request.parameters.get("password").orElse(request.parameters.get("token"))) match {
-          case (Some(org), Some(user), Some(pw)) => Creds(OrgAndIdCred(org,user).toString,pw)
-          case (None, Some(user), Some(pw)) => Creds(OrgAndIdCred("",user).toString,pw)   // this is when they are querying /orgs so there is not org
-          case _ => if (anonymousOk) Creds("","")
-          else throw new InvalidCredentialsException(ExchangeMessage.translateMessage("no.creds.given"))
-        }
-      }
-    }
-  }
-  */
 
   // Embodies both the exchange-specific Identity, and the JAAS/javax.security.auth Subject
   // Note: this is defined here, instead of AuthenticationSupport, because its authorizeTo() method uses this class extensively
   case class AuthenticatedIdentity(identity: Identity, subject: Subject) {
-    def authorizeTo(target: Target, access: Access): Identity = {
+
+    // Determines if this authenticated identity has the specified access to the specified target
+    def authorizeTo(target: Target, access: Access): Try[Identity] = {
       var requiredAccess: Authorization = RequiresAccess(Access.NONE)
       try {
         identity match {
@@ -321,25 +252,23 @@ trait AuthorizationSupport {
               //logger.debug("authenticatedIdentity=" + authenticatedIdentity.id)
               requiredAccess = identity.authorizeTo(TUser(authenticatedIdentity.id), access)
               requiredAccess.as(subject)
-              IUser(authenticatedIdentity)
+              Success(IUser(authenticatedIdentity))
             } else {
               // This is a local exchange user
               //logger.debug("authorizeTo(): creds.id=" + identity.creds.id)
               requiredAccess = identity.authorizeTo(target, access)
               requiredAccess.as(subject)
-              identity
+            Success(identity)
             }
           case _ =>
             // This is an exchange node or agbot
             requiredAccess = identity.authorizeTo(target, access)
             requiredAccess.as(subject)
-            identity
+            Success(identity)
         }
       } catch {
-        case _: Exception => h.halt(
-          HttpCode.ACCESS_DENIED,
-          ApiResponse(ApiResponseType.ACCESS_DENIED, identity.accessDeniedMsg(requiredAccess.specificAccessRequired))
-        )
+        case _: Exception =>
+          Failure(new AccessDeniedException(identity.accessDeniedMsg(requiredAccess.specificAccessRequired)))
       }
     }
   }
@@ -374,7 +303,7 @@ trait AuthorizationSupport {
         case CacheIdType.User => return toIUser
         case CacheIdType.Node => return toINode
         case CacheIdType.Agbot => return toIAgbot
-        case CacheIdType.None => throw new InvalidCredentialsException() // will be caught by AuthenticationSupport.authenticate() and the proper halt() done
+        case CacheIdType.None => throw new InvalidCredentialsException() // will be caught by AuthenticationSupport.authenticate()
       }
     }
 
@@ -408,19 +337,6 @@ trait AuthorizationSupport {
       throw new Exception("Not Implemented")
     }
   }
-
-  /*
-  case class IFrontEnd(creds: Creds) extends Identity {
-    override def authenticate(hint: String) = {
-      if (ExchConfig.config.getString("api.root.frontEndHeader") == creds.id) this    // let everything thru
-      else halt(HttpCode.BADCREDS, ApiResponse(ApiResponseType.BADCREDS, ExchangeMessage.translateMessage("invalid.credentials")))
-    }
-    def authorizeTo(target: Target, access: Access): Authorization = {
-      if (ExchConfig.config.getString("api.root.frontEndHeader") == creds.id) FrontendAuth    // let everything thru
-      else halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, ExchangeMessage.translateMessage("access.denied.no.exchange.front.end")))
-    }
-  }
-  */
 
   case class IUser(creds: Creds) extends Identity {
     override def isSuperUser = Role.isSuperUser(creds.id)
@@ -659,12 +575,14 @@ trait AuthorizationSupport {
     override def isMultiTenantAgbot: Boolean = return getOrg == "IBM"    //todo: implement instance-level ACLs instead of hardcoding this
   }
 
+  /*
   case class IApiKey(creds: Creds) extends Identity {
     def authorizeTo(target: Target, access: Access): Authorization = {
-      //if (hasFrontEndAuthority) return FrontendAuth // allow whatever it wants to do
-      h.halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, accessDeniedMsg(access))) // should not ever get here
+      if (hasFrontEndAuthority) return FrontendAuth // allow whatever it wants to do
+      halt(HttpCode.ACCESS_DENIED, ApiResponse(ApiResponseType.ACCESS_DENIED, accessDeniedMsg(access))) // should not ever get here
     }
   }
+  */
 
   case class IAnonymous(creds: Creds) extends Identity {
     override lazy val role = AuthRoles.Anonymous

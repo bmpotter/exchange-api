@@ -3,7 +3,7 @@ package com.horizon.exchangeapi.auth
 import com.horizon.exchangeapi.{ ApiResponseType, ExchangeMessage, HttpCode }
 import javax.security.auth.login.{ FailedLoginException, LoginException }
 
-//
+// Base class for all of the exchange authentication and authorization failures
 class AuthException(var httpCode: Int, var apiResponse: String, msg: String) extends LoginException(msg)
 
 // Auth errors we need to report to the user, like the creds looked like an ibm cloud cred, but their org didnt point to a cloud acct
@@ -23,6 +23,12 @@ class DbTimeoutException(msg: String) extends AuthException(HttpCode.GW_TIMEOUT,
 class DbConnectionException(msg: String) extends AuthException(HttpCode.BAD_GW, ApiResponseType.BAD_GW, msg)
 
 class InvalidCredentialsException(msg: String = ExchangeMessage.translateMessage("invalid.credentials")) extends AuthException(HttpCode.BADCREDS, ApiResponseType.BADCREDS, msg)
+
+class AccessDeniedException(msg: String = ExchangeMessage.translateMessage("access.denied")) extends AuthException(HttpCode.ACCESS_DENIED, ApiResponseType.ACCESS_DENIED, msg)
+
+class BadInputException(msg: String = ExchangeMessage.translateMessage("bad.input")) extends AuthException(HttpCode.BAD_INPUT, ApiResponseType.BAD_INPUT, msg)
+
+class NotFoundException(msg: String = ExchangeMessage.translateMessage("not.found")) extends AuthException(HttpCode.NOT_FOUND, ApiResponseType.NOT_FOUND, msg)
 
 class UserCreateException(msg: String = ExchangeMessage.translateMessage("error.creating.user.noargs")) extends AuthException(HttpCode.INTERNAL_ERROR, ApiResponseType.INTERNAL_ERROR, msg)
 

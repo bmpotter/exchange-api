@@ -7,6 +7,8 @@
 package com.horizon.exchangeapi
 
 import akka.event.{ Logging, LoggingAdapter }
+
+import scala.util.matching.Regex
 //import akka.http.scaladsl.model.headers.HttpCredentials
 import akka.http.scaladsl.server.RouteResult.Rejected
 import akka.http.scaladsl.server.directives.{ DebuggingDirectives, LogEntry }
@@ -97,26 +99,15 @@ object ExchangeApiApp extends App {
       .result()
 
   // Custom logging of requests and responses. See https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/debugging-directives/logRequestResult.html
+  val basicAuthRegex = new Regex("^Basic ?(.*)$")
   def requestResponseLogging(req: HttpRequest): RouteResult => Option[LogEntry] = {
     case RouteResult.Complete(res) =>
-      //todo: put this in Authentication.scala and use here and for rejections
       // First decode the auth and get the org/id
       val optionalEncodedAuth = req.getHeader("Authorization") // this is type: com.typesafe.config.Optional[akka.http.scaladsl.model.HttpHeader]
       val encodedAuth = if (optionalEncodedAuth.isPresent) optionalEncodedAuth.get().value() else ""
-      val R1 = "^Basic ?(.*)$".r
       val authId = encodedAuth match {
-        case R1(basicAuthEncoded) =>
+        case basicAuthRegex(basicAuthEncoded) =>
           AuthenticationSupport.parseCreds(basicAuthEncoded).map(_.id).getOrElse("<invalid-auth>")
-        /* try {
-            val decodedAuthStr = new String(Base64.getDecoder.decode(basicAuthEncoded), "utf-8")
-            val R2 = """^(.+):.+\s?$""".r // decode() seems to add a newline at the end
-            decodedAuthStr match {
-              case R2(id) => /*logger.trace("id="+id+",tok="+tok+".");*/ id
-              case _ => "<invalid-auth>"
-            }
-          } catch {
-            case _: IllegalArgumentException => "<invalid-auth>" // this is the exception from decode()
-          } */
         case _ => "<invalid-auth>"
       }
       // Now log all the info
@@ -218,10 +209,11 @@ object ExchangeApiApp extends App {
   Await.result(system.whenTerminated, Duration.Inf)
 }
 
-//todo: move these to auth/Exceptions.scala ?
+/* these have been moved to auth/Exceptions.scala:
 class AccessDeniedException(var httpCode: Int, var apiResponse: String, msg: String) extends Exception(msg)
 class BadInputException(var httpCode: Int, var apiResponse: String, msg: String) extends Exception(msg)
 class NotFoundException(var httpCode: Int, var apiResponse: String, msg: String) extends Exception(msg)
+*/
 
 /*
 import javax.servlet.ServletContext

@@ -37,11 +37,6 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
   // The unhashed and hashed values of the token are not always both set, but if they are they are in sync.
   case class Tokens(unhashed: String, hashed: String)
 
-  /* Cache todo:
-  - scale test
-  - if cache value results in invalid creds or access denied, remove cache entry and try again
-   */
-
   /** Holds recently authenticated users, node ids, agbot ids */
   class CacheId() {
     // For this cache the key is the id (already prefixed with the org) and the value is this class
