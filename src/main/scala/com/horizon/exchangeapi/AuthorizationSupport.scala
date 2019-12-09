@@ -1,15 +1,10 @@
 package com.horizon.exchangeapi
 
-//import java.util.Base64
-
 import akka.event.LoggingAdapter
 import com.horizon.exchangeapi.auth._
 
 import scala.util._
-//import javax.servlet.http.HttpServletRequest
-//import org.scalatra.servlet.ServletApiImplicits
-//import org.scalatra.{Control, Params}
-//import org.slf4j.Logger
+import scala.collection.mutable.{HashMap => MutableHashMap}
 
 import scala.collection.JavaConverters._
 import javax.security.auth.Subject
@@ -74,7 +69,11 @@ object Access extends Enumeration {
 }
 import com.horizon.exchangeapi.Access._
 
-// I think this is an enum for values that get stuffed into Module.ExchangeRole
+object AccessGroups {
+  val CROSS_ORG_ACCESS = Set(CREATE_ORGS, READ_OTHER_ORGS, WRITE_OTHER_ORGS, CREATE_IN_OTHER_ORGS, SET_IBM_ORG_TYPE, ADMIN)
+}
+
+// These are default roles (always defined). More can be added in the config file
 object AuthRoles {
   val SuperUser = "SuperUser"
   val AdminUser = "AdminUser"
@@ -82,21 +81,23 @@ object AuthRoles {
   val Node = "Node"
   val Agbot = "Agbot"
   val Anonymous = "Anonymous"
+  val requiredRoles = Set(Anonymous, User, AdminUser, SuperUser, Node, Agbot)
+  /*
+  val SuperUser = "SuperUser"
+  val AdminUser = "AdminUser"
+  val User = "User"
+  val Node = "Node"
+  val Agbot = "Agbot"
+  val Anonymous = "Anonymous"
+  */
 }
 
+/* Not using the java authorization framework anymore, because it doesn't add any value for us and adds complexity
 // Authorization and its subclasses are used by the authorizeTo() methods in Identity subclasses
 sealed trait Authorization {
   def as(subject: Subject): Unit
   def specificAccessRequired: Access
 }
-
-/*
-case object FrontendAuth extends Authorization {
-  override def as(subject: Subject): Unit = {}
-
-  override def specificAccessRequired = Access.NONE // i think this should never be called
-}
-*/
 
 case class RequiresAccess(specificAccess: Access) extends Authorization {
   override def as(subject: Subject): Unit = {
@@ -105,62 +106,51 @@ case class RequiresAccess(specificAccess: Access) extends Authorization {
 
   override def specificAccessRequired = specificAccess
 }
+*/
 
 /** Who is allowed to do what. */
 object Role {
-  /* this is now in resources/auth.policy
+  /* this is now in config.json
   val ANONYMOUS = Set(Access.RESET_USER_PW)
   val USER = Set(Access.READ_MYSELF, Access.WRITE_MYSELF, Access.RESET_USER_PW, Access.CREATE_NODE, Access.READ_MY_NODES, Access.WRITE_MY_NODES, Access.READ_ALL_NODES, Access.CREATE_AGBOT, Access.READ_MY_AGBOTS, Access.WRITE_MY_AGBOTS, Access.DATA_HEARTBEAT_MY_AGBOTS, Access.READ_ALL_AGBOTS, Access.STATUS)
   val SUPERUSER = Set(Access.ALL)
   val NODE = Set(Access.READ_MYSELF, Access.WRITE_MYSELF, Access.READ_MY_NODES, Access.SEND_MSG_TO_AGBOT)
   val AGBOT = Set(Access.READ_MYSELF, Access.WRITE_MYSELF, Access.DATA_HEARTBEAT_MY_AGBOTS, Access.READ_MY_AGBOTS, Access.READ_ALL_NODES, Access.SEND_MSG_TO_NODE)
-  def hasAuthorization(role: Set[Access], access: Access): Boolean = { role.contains(Access.ALL) || role.contains(access) }
+  */
 
-  var ANONYMOUS = Set[String]()
-  var USER = Set[String]()
-  var ADMINUSER = Set[String]()
-  var SUPERUSER = Set[String]()
-  var NODE = Set[String]()
-  var AGBOT = Set[String]()
+  type AccessList = Set[String]
+  //case class AccessList extends Set[String]
 
-  // Sets the set of access values to the specified role. Not used, now done in resources/auth.policy
-  def setRole(role: String, accessValues: Set[String]): Try[String] = {
-    role match {
-      case "ANONYMOUS" => ANONYMOUS = accessValues
-      case "USER" => USER = accessValues
-      case "ADMINUSER" => ADMINUSER = accessValues
-      case "SUPERUSER" => SUPERUSER = accessValues
-      case "NODE" => NODE = accessValues
-      case "AGBOT" => AGBOT = accessValues
-      case _ => return Failure(new Exception("invalid role"))
-    }
-    return Success("role set successfuly")
-  }
+  // Making the roles and their ACLs a map, so it is more flexible at runtime
+  val roles = new MutableHashMap[String, AccessList]()
 
-  val allAccessValues = getAllAccessValues
+  // Sets the access list to the specified role
+  def setRole(role: String, accessValues: AccessList) = roles.put(role, accessValues)
 
-  // Returns a set of all of the Access enum toString values
-  def getAllAccessValues: Set[String] = {
-    val accessSet = MutableSet[String]()
-    for (a <- Access.values) { accessSet += a.toString}
-    accessSet.toSet
-  }
+  // we need at least these roles set in the config file
+  //someday: if/when we support adding user-defined roles, we need to enhance this check
+  def haveRequiredRoles = roles.keySet == AuthRoles.requiredRoles   // will return true even if the elements are in a different order
+
+  val allAccessValues = Access.values.map(_.toString)
 
   // Returns true if the specified access string is valid. Used to check input from config.json.
-  def isValidAcessValues(accessValues: Set[String]): Boolean = {
+  def isValidAcessValues(accessValues: AccessList): Boolean = {
     for (a <- accessValues) if (!allAccessValues.contains(a)) return false
     return true
   }
 
   // Returns true if the role has the specified access
-  def hasAuthorization(role: Set[String], access: Access): Boolean = {
-    if (role.contains(Access.ALL.toString)) return true
-    if (role.contains(Access.ALL_IN_ORG.toString) && !(access == CREATE_ORGS || access == READ_OTHER_ORGS || access == WRITE_OTHER_ORGS || access == CREATE_IN_OTHER_ORGS || access == ADMIN)) return true
-    return role.contains(access.toString)
+  def hasAuthorization(role: String, access: Access)(implicit logger: LoggingAdapter): Boolean = {
+    roles.get(role) match {
+      case Some(accessList) =>
+        if (accessList.contains(Access.ALL.toString) ) return true
+        if (accessList.contains(Access.ALL_IN_ORG.toString) && !AccessGroups.CROSS_ORG_ACCESS.contains(access) ) return true
+        return accessList.contains(access.toString)
+      case None =>
+        logger.error (s"Role.hasAuthorization: role $role does not exist")
+        return false
+    }
   }
-
-  def publicOrg = "public"
-  */
 
   def superUser = "root/root"
   def isSuperUser(username: String): Boolean = return username == superUser // only checks the username, does not verify the pw
@@ -243,32 +233,35 @@ trait AuthorizationSupport {
 
     // Determines if this authenticated identity has the specified access to the specified target
     def authorizeTo(target: Target, access: Access): Try[Identity] = {
-      var requiredAccess: Authorization = RequiresAccess(Access.NONE)
+      //var requiredAccess: Authorization = RequiresAccess(Access.NONE)
       try {
         identity match {
           case IUser(_) => if (target.getId == "iamapikey" || target.getId == "iamtoken") {
               // This is a cloud user
               val authenticatedIdentity = subject.getPrivateCredentials(classOf[IUser]).asScala.head.creds
               //logger.debug("authenticatedIdentity=" + authenticatedIdentity.id)
-              requiredAccess = identity.authorizeTo(TUser(authenticatedIdentity.id), access)
+              /* requiredAccess = identity.authorizeTo(TUser(authenticatedIdentity.id), access)
               requiredAccess.as(subject)
-              Success(IUser(authenticatedIdentity))
+              Success(IUser(authenticatedIdentity)) */
+              identity.authorizeTo(TUser(authenticatedIdentity.id), access)
             } else {
               // This is a local exchange user
               //logger.debug("authorizeTo(): creds.id=" + identity.creds.id)
-              requiredAccess = identity.authorizeTo(target, access)
+              /* requiredAccess = identity.authorizeTo(target, access)
               requiredAccess.as(subject)
-            Success(identity)
+              Success(identity) */
+              identity.authorizeTo(target, access)
             }
           case _ =>
             // This is an exchange node or agbot
-            requiredAccess = identity.authorizeTo(target, access)
+            /* requiredAccess = identity.authorizeTo(target, access)
             requiredAccess.as(subject)
-            Success(identity)
+            Success(identity) */
+            identity.authorizeTo(target, access)
         }
       } catch {
         case _: Exception =>
-          Failure(new AccessDeniedException(identity.accessDeniedMsg(requiredAccess.specificAccessRequired)))
+          Failure(new AccessDeniedException(identity.accessDeniedMsg(access)))
       }
     }
   }
@@ -276,7 +269,7 @@ trait AuthorizationSupport {
   /** This class and its subclasses represent the identity that is used as credentials to run rest api methods */
   abstract class Identity {
     def creds: Creds
-    def role: String = ""   // set in the subclasses to 1 of the roles in AuthRoles
+    def role: String = ""   // set in the subclasses to a role defined in Role
     def toIUser = IUser(creds)
     def toINode = INode(creds)
     def toIAgbot = IAgbot(creds)
@@ -307,7 +300,7 @@ trait AuthorizationSupport {
       }
     }
 
-    def authorizeTo(target: Target, access: Access): Authorization
+    def authorizeTo(target: Target, access: Access): Try[Identity]
 
     def getOrg: String = {
       val reg = """^(\S+?)/.*""".r
@@ -332,9 +325,9 @@ trait AuthorizationSupport {
 
   /** A generic identity before we have run authenticate to figure out what type of credentials this is */
   case class IIdentity(creds: Creds) extends Identity {
-    def authorizeTo(target: Target, access: Access): Authorization = {
+    def authorizeTo(target: Target, access: Access): Try[Identity] = {
       // should never be called because authenticate() will return a real resource
-      throw new Exception("Not Implemented")
+      Failure(new AuthInternalErrorException("Not Implemented"))
     }
   }
 
@@ -346,8 +339,7 @@ trait AuthorizationSupport {
       else if (isAdmin) AuthRoles.AdminUser
       else AuthRoles.User
 
-    override def authorizeTo(target: Target, access: Access): Authorization = {
-      //if (hasFrontEndAuthority) return FrontendAuth // allow whatever it wants to do
+    override def authorizeTo(target: Target, access: Access): Try[Identity] = {
       val requiredAccess =
         // Transform any generic access into specific access
         if (!isMyOrg(target) && !target.isPublic) {
@@ -406,7 +398,9 @@ trait AuthorizationSupport {
           }
         }
       //logger.trace("IUser.authorizeTo() requiredAccess: "+requiredAccess)
-      RequiresAccess(requiredAccess)
+      //RequiresAccess(requiredAccess)
+      if (Role.hasAuthorization(role, requiredAccess)) Success(this)
+      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
     }
 
     override def isAdmin: Boolean = {
@@ -418,10 +412,11 @@ trait AuthorizationSupport {
     }
 
     def iOwnTarget(target: Target): Boolean = {
-      if (target.mine) return true
-      else if (target.all) return false
+      if (target.mine) true
+      else if (target.all) false
+      else target.isOwner(this)
+      /* moved these into the Target subclasses
       else {
-        //todo: should move these into the Target subclasses
         val owner = target match {
           case TUser(id) => return id == creds.id
           case TNode(id) => AuthCache.getNodeOwner(id)
@@ -435,14 +430,14 @@ trait AuthorizationSupport {
           case Some(owner2) => if (owner2 == creds.id) return true else return false
           case None => return true    // if we did not find it, we consider that as owning it because we will create it
         }
-      }
+      } */
     }
   }
 
   case class INode(creds: Creds) extends Identity {
     override lazy val role = AuthRoles.Node
 
-    def authorizeTo(target: Target, access: Access): Authorization = {
+    def authorizeTo(target: Target, access: Access): Try[Identity] = {
       //if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
       // Transform any generic access into specific access
       val requiredAccess =
@@ -500,18 +495,21 @@ trait AuthorizationSupport {
             case TAction(_) => access // a node running an action
           }
         }
-      RequiresAccess(requiredAccess)
+      //RequiresAccess(requiredAccess)
+      if (Role.hasAuthorization(role, requiredAccess)) Success(this)
+      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
+
     }
 
     def isMsgToMultiTenantAgbot(target: Target, access: Access): Boolean = {
-      return target.getOrg == "IBM" && (access == Access.SEND_MSG_TO_AGBOT || access == Access.READ)    //todo: implement instance-level ACLs instead of hardcoding this
+      return target.getOrg == "IBM" && (access == Access.SEND_MSG_TO_AGBOT || access == Access.READ)    //someday: implement instance-level ACLs instead of hardcoding this
     }
   }
 
   case class IAgbot(creds: Creds) extends Identity {
     override lazy val role = AuthRoles.Agbot
 
-    def authorizeTo(target: Target, access: Access): Authorization = {
+    def authorizeTo(target: Target, access: Access): Try[Identity] = {
       //if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
       // Transform any generic access into specific access
       val requiredAccess =
@@ -569,10 +567,12 @@ trait AuthorizationSupport {
             case TAction(_) => access // a agbot running an action
           }
         }
-      RequiresAccess(requiredAccess)
+      //RequiresAccess(requiredAccess)
+      if (Role.hasAuthorization(role, requiredAccess)) Success(this)
+      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
     }
 
-    override def isMultiTenantAgbot: Boolean = return getOrg == "IBM"    //todo: implement instance-level ACLs instead of hardcoding this
+    override def isMultiTenantAgbot: Boolean = return getOrg == "IBM"    //someday: implement instance-level ACLs instead of hardcoding this
   }
 
   /*
@@ -589,10 +589,10 @@ trait AuthorizationSupport {
 
     //override def getOrg = Role.publicOrg  // no longer support the special public org
 
-    def authorizeTo(target: Target, access: Access): Authorization = {
+    def authorizeTo(target: Target, access: Access): Try[Identity] = {
       // Transform any generic access into specific access
       val requiredAccess =
-        //todo: This makes anonymous never work, but we need it to work for RESET_USER_PW
+        // Note: the !isMyOrg(target) call would make anonymous never work, but we want it to work for RESET_USER_PW, altho that is outdated
         if (access == Access.RESET_USER_PW) Access.RESET_USER_PW
         else if (!isMyOrg(target) && !target.isPublic) {  // Note: IAnonymous.isMyOrg() is always false, except for admin operations
           access match {
@@ -648,7 +648,9 @@ trait AuthorizationSupport {
             case TAction(_) => access // a anonymous running an action
           }
         }
-      RequiresAccess(requiredAccess)
+      //RequiresAccess(requiredAccess)
+      if (Role.hasAuthorization(role, requiredAccess)) Success(this)
+      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
     }
   }
 
@@ -658,6 +660,7 @@ trait AuthorizationSupport {
     def all: Boolean = return getId == "*"
     def mine: Boolean = return getId == "#"
     def isPublic: Boolean = return false    // is overridden by some subclasses
+    def isOwner(user: IUser): Boolean = return false    // is overridden by some subclasses
 
     // Returns just the orgid part of the resource
     def getOrg: String = {
@@ -682,16 +685,50 @@ trait AuthorizationSupport {
     override def getOrg = id    // otherwise the regex in the base class will return blank because there is no /
     override def getId = ""
   }
-  case class TUser(id: String) extends Target
-  case class TNode(id: String) extends Target
-  case class TAgbot(id: String) extends Target
+  case class TUser(id: String) extends Target {
+    override def isOwner(user: IUser): Boolean = id == user.creds.id
+  }
+  case class TNode(id: String) extends Target {
+    override def isOwner(user: IUser): Boolean = {
+      AuthCache.getNodeOwner(id) match {
+        case Some(owner) => if (owner == user.creds.id) return true else return false
+        case None => return true    // if we did not find it, we consider that as owning it because we will create it
+      }
+    }
+  }
+  case class TAgbot(id: String) extends Target {
+    override def isOwner(user: IUser): Boolean = {
+      AuthCache.getAgbotOwner(id) match {
+        case Some(owner) => if (owner == user.creds.id) return true else return false
+        case None => return true    // if we did not find it, we consider that as owning it because we will create it
+      }
+    }
+  }
   case class TService(id: String) extends Target {      // for services only the user that created it can update/delete it
+    override def isOwner(user: IUser): Boolean = {
+      AuthCache.getServiceOwner(id) match {
+        case Some(owner) => if (owner == user.creds.id) return true else return false
+        case None => return true    // if we did not find it, we consider that as owning it because we will create it
+      }
+    }
     override def isPublic: Boolean = if (all) return true else return AuthCache.getServiceIsPublic(id).getOrElse(false)
   }
   case class TPattern(id: String) extends Target {      // for patterns only the user that created it can update/delete it
+    override def isOwner(user: IUser): Boolean = {
+      AuthCache.getPatternOwner(id) match {
+        case Some(owner) => if (owner == user.creds.id) return true else return false
+        case None => return true    // if we did not find it, we consider that as owning it because we will create it
+      }
+    }
     override def isPublic: Boolean = if (all) return true else return AuthCache.getPatternIsPublic(id).getOrElse(false)
   }
   case class TBusiness(id: String) extends Target {      // for business policies only the user that created it can update/delete it
+    override def isOwner(user: IUser): Boolean = {
+      AuthCache.getBusinessOwner(id) match {
+        case Some(owner) => if (owner == user.creds.id) return true else return false
+        case None => return true    // if we did not find it, we consider that as owning it because we will create it
+      }
+    }
     override def isPublic: Boolean = if (all) return true else return AuthCache.getBusinessIsPublic(id).getOrElse(false)
   }
   case class TAction(id: String = "") extends Target    // for post rest api methods that do not target any specific resource (e.g. admin operations)

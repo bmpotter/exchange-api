@@ -95,7 +95,7 @@ class IbmCloudModule extends LoginModule with AuthorizationSupport {
           val user = IUser(Creds(username, ""))
           //logger.info("IBM User " + user.creds.id + " from " + clientIp + " running " + req.getMethod + " " + req.getPathInfo)
           if (isDbMigration && !Role.isSuperUser(user.creds.id)) throw new IsDbMigrationException()
-          identity = user
+          identity = user // so when the user is authenticating via apikey, we can know the associated username
           user
         }
       }
@@ -118,6 +118,7 @@ class IbmCloudModule extends LoginModule with AuthorizationSupport {
     succeeded
   }
 
+  // Add the real identify of the api key in the subject so we can get it later during authorization
   override def logout(): Boolean = {
     subject.getPrivateCredentials().add(identity)
     true
@@ -128,7 +129,7 @@ class IbmCloudModule extends LoginModule with AuthorizationSupport {
   override def commit(): Boolean = {
     if (succeeded) {
       subject.getPrivateCredentials().add(identity)
-      subject.getPrincipals().add(ExchangeRole(identity.role))
+      //subject.getPrincipals().add(ExchangeRole(identity.role)) // don't think we need this
     }
     succeeded
   }

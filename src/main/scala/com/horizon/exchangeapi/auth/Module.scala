@@ -1,6 +1,6 @@
 package com.horizon.exchangeapi.auth
 
-import java.security._
+//import java.security._
 
 import com.horizon.exchangeapi._
 import javax.security.auth._
@@ -9,7 +9,8 @@ import javax.security.auth.login.FailedLoginException
 import javax.security.auth.spi.LoginModule
 //import org.slf4j.{ Logger, LoggerFactory }
 
-import scala.util.{ Failure, Success, Try }
+//import scala.util.{ Failure, Success, Try }
+import scala.util._
 
 /**
  * JAAS module to authenticate local user/pw, nodeid/token, and agbotid/token in the exchange.
@@ -93,7 +94,7 @@ class Module extends LoginModule with AuthorizationSupport {
   override def commit(): Boolean = {
     if (succeeded) {
       subject.getPrivateCredentials().add(identity)
-      subject.getPrincipals().add(ExchangeRole(identity.role))
+      //subject.getPrincipals().add(ExchangeRole(identity.role)) // don't think we need this
     }
     succeeded
   }
@@ -131,8 +132,7 @@ class RequestCallback extends Callback {
   def request: Option[RequestInfo] = req
 }
 
-//---------- Everything below here is for authorization
-
+/* Everything below here is for authorization, but not using the java authorization framework anymore, because it doesn't add any value for us and adds complexity
 // Both ExchangeRole and AccessPermission are listed in resources/auth.policy
 case class ExchangeRole(role: String) extends Principal {
   override def getName = role
@@ -177,4 +177,5 @@ case class PermissionCheck(permission: String) extends PrivilegedAction[Unit] {
     }
   }
 }
+*/
 

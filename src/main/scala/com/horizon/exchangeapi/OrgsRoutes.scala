@@ -123,7 +123,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with
   def orgsGetRoute: Route = (get & path("orgs") & extractCredentials & parameter(('orgtype.?, 'label.?))) { (creds, orgType, label) =>
     logger.debug(s"Doing GET /orgs with creds:$creds, orgType:$orgType, label:$label")
     // If filter is orgType=IBM then it is a different access required than reading all orgs
-    val access = if (orgType.getOrElse("").contains("IBM")) Access.READ_IBM_ORGS else Access.READ // read all orgs
+    val access = if (orgType.getOrElse("").contains("IBM")) Access.READ_IBM_ORGS else Access.READ_OTHER_ORGS
     auth(creds, TOrg("*"), access) match {
       case Failure(t) => reject(AuthRejection(t))
       case Success(identity) =>

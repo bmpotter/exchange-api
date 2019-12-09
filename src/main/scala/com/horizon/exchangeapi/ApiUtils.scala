@@ -149,8 +149,6 @@ object ExchConfig {
   val configOpts = ConfigParseOptions.defaults().setSyntax(ConfigSyntax.CONF).setAllowMissing(false)
   var config = ConfigFactory.parseResources(configResourceName, configOpts) // these are the default values, this file is bundled in the jar
 
-  //val LOGGER = "EXCHANGE" //or could use org.slf4j.Logger.ROOT_LOGGER_NAME
-  //val logger: Logger = LoggerFactory.getLogger(LOGGER).asInstanceOf[Logger] //note: maybe add a custom layout that includes the date: http://logback.qos.ch/manual/layouts.html
   var defaultLogger: LoggingAdapter = _ // this gets set early by ExchangeApiApp
   def logger = defaultLogger
 
@@ -158,7 +156,8 @@ object ExchConfig {
   val levels: Map[String, Level] = Map("OFF" -> Level.OFF, "ERROR" -> Level.ERROR, "WARN" -> Level.WARN, "INFO" -> Level.INFO, "DEBUG" -> Level.DEBUG /* , "TRACE" -> Level.TRACE, "ALL" -> Level.ALL */ )
   var rootHashedPw = "" // so we can remember the hashed pw between load() and createRoot()
 
-  /** Tries to load the user's external config file */
+  // Tries to load the user's external config file
+  // Note: logger doesn't have a valid value at the time of this call
   def load(): Unit = {
     val f = new File(configFileName)
     if (f.isFile) { // checks if it exists and is a regular file
@@ -168,9 +167,18 @@ object ExchConfig {
       println("Config file " + configFileName + " not found. Running with defaults suitable for local development.")
     }
 
+    // Read the ACLs and set them in our Role object
+    val roles = config.getObject("api.acls").asScala.toMap
+    for ((role, _) <- roles) {
+      val accessSet = getStringList("api.acls." + role).toSet
+      if (!Role.isValidAcessValues(accessSet)) println("Error: invalid value in ACLs in config file for role " + role)
+      else Role.setRole(role, accessSet)
+    }
+    println(s"Roles: ${Role.roles}")
+    if (!Role.haveRequiredRoles) println("Error: at least these roles must be set in the config file: " + AuthRoles.requiredRoles.mkString(", "))
+
     // Note: currently there is no other value besides guava
     AuthCache.cacheType = config.getString("api.cache.type") // need to do this before using the cache in the next step
-    //logger.info("Using cache type: " + AuthCache.cacheType)
   }
 
   def getLogLevel = {

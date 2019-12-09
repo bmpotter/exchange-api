@@ -122,7 +122,7 @@ trait AuthenticationSupport extends AuthorizationSupport {
     for (err <- Try(loginCtx.login()).failed) {
       return Failure(err)
     }
-    val subject = loginCtx.getSubject
+    val subject = loginCtx.getSubject // if we authenticated an api key, the subject contains the associated username
     return Success(AuthenticatedIdentity(subject.getPrivateCredentials(classOf[Identity]).asScala.head, subject))
   }
 
