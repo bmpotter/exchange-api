@@ -48,7 +48,7 @@ class Module extends LoginModule with AuthorizationSupport {
       handler.handle(Array(reqCallback))
       if (reqCallback.request.isEmpty) {
         logger.debug("Unable to get HTTP request while authenticating")
-        throw new AuthInternalErrorException(ExchangeMessage.translateMessage("unable.to.get.http.request.when.authenticating"))
+        throw new AuthInternalErrorException(ExchMsg.translate("unable.to.get.http.request.when.authenticating"))
       }
       val reqInfo = reqCallback.request.get
       val RequestInfo(creds, /*req, _,*/ isDbMigration /*, _*/ , hint) = reqInfo

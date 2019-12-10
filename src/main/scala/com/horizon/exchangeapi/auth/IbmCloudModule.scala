@@ -47,11 +47,11 @@ case class ClusterConfigResponse(cluster_name: String, cluster_url: String, clus
 
 // These error msgs are matched by UsersSuite.scala, so change them there if you change them here
 case class OrgNotFound(authInfo: IamAuthCredentials)
-  extends UserFacingError(ExchangeMessage.translateMessage("org.not.found.user.facing.error", authInfo.org))
+  extends UserFacingError(ExchMsg.translate("org.not.found.user.facing.error", authInfo.org))
 case class IncorrectOrgFound(orgAcctId: String, userInfo: IamUserInfo)
-  extends UserFacingError(ExchangeMessage.translateMessage("incorrect.org.found.user.facing.error", orgAcctId, userInfo.accountId))
+  extends UserFacingError(ExchMsg.translate("incorrect.org.found.user.facing.error", orgAcctId, userInfo.accountId))
 case class IncorrectIcpOrgFound(requestOrg: String, userCredsOrg: String)
-  extends UserFacingError(ExchangeMessage.translateMessage("incorrect.org.found.user.facing.error.ICP", requestOrg, userCredsOrg))
+  extends UserFacingError(ExchMsg.translate("incorrect.org.found.user.facing.error.ICP", requestOrg, userCredsOrg))
 
 /**
  * JAAS module to authenticate to the IBM cloud. Called from AuthenticationSupport:authenticate() because JAAS.config references this module.
@@ -257,12 +257,12 @@ object IbmCloudAuth {
             return Failure(new IamApiErrorException(response.body.toString))
           } else delayedReturn = Failure(new IamApiErrorException(response.body.toString))
         } catch {
-          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchangeMessage.translateMessage("error.getting.iam.token.from.api.key", e.getMessage)))
+          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchMsg.translate("error.getting.iam.token.from.api.key", e.getMessage)))
         }
       }
       delayedReturn // if we tried the max times and never got a successful positive or negative, return what we last got
     } else {
-      Failure(new AuthInternalErrorException(ExchangeMessage.translateMessage("no.valid.iam.keyword")))
+      Failure(new AuthInternalErrorException(ExchMsg.translate("no.valid.iam.keyword")))
     }
   }
 
@@ -271,7 +271,7 @@ object IbmCloudAuth {
   private def getUserInfo(token: IamToken, authInfo: IamAuthCredentials): Try[IamUserInfo] = {
     if (isIcp && token.tokenType.getOrElse("") == "iamapikey") {
       // An icp platform apikey that we can use directly to authenticate and get the username
-      var delayedReturn: Try[IamUserInfo] = Failure(new AuthInternalErrorException(ExchangeMessage.translateMessage("iam.return.value.not.set")))
+      var delayedReturn: Try[IamUserInfo] = Failure(new AuthInternalErrorException(ExchMsg.translate("iam.return.value.not.set")))
       for (i <- 1 to iamRetryNum) {
         try {
           val iamUrl = getIcpMgmtIngressUrl + "/iam-token/oidc/introspect"
@@ -290,13 +290,13 @@ object IbmCloudAuth {
             else return Failure(new IamApiErrorException("invalid API key"))
           } else delayedReturn = Failure(new IamApiErrorException(response.body.toString))
         } catch {
-          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchangeMessage.translateMessage("error.authenticating.icp.iam.key", e.getMessage)))
+          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchMsg.translate("error.authenticating.icp.iam.key", e.getMessage)))
         }
       }
       delayedReturn // if we tried the max times and never got a successful positive or negative, return what we last got
     } else if (isIcp) {
       // An icp token from the UI
-      var delayedReturn: Try[IamUserInfo] = Failure(new AuthInternalErrorException(ExchangeMessage.translateMessage("iam.return.value.not.set")))
+      var delayedReturn: Try[IamUserInfo] = Failure(new AuthInternalErrorException(ExchMsg.translate("iam.return.value.not.set")))
       for (i <- 1 to iamRetryNum) {
         try {
           val iamUrl = getIcpIdentityProviderUrl + "/v1/auth/userinfo"
@@ -313,13 +313,13 @@ object IbmCloudAuth {
             return Failure(new IamApiErrorException(response.body.toString))
           } else delayedReturn = Failure(new IamApiErrorException(response.body.toString))
         } catch {
-          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchangeMessage.translateMessage("error.authenticating.icp.iam.token", e.getMessage)))
+          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchMsg.translate("error.authenticating.icp.iam.token", e.getMessage)))
         }
       }
       delayedReturn // if we tried the max times and never got a successful positive or negative, return what we last got
     } else {
       // An ibm public cloud token, either from the UI or from the platform apikey we were given
-      var delayedReturn: Try[IamUserInfo] = Failure(new AuthInternalErrorException(ExchangeMessage.translateMessage("iam.return.value.not.set")))
+      var delayedReturn: Try[IamUserInfo] = Failure(new AuthInternalErrorException(ExchMsg.translate("iam.return.value.not.set")))
       for (i <- 1 to iamRetryNum) {
         try {
           val iamUrl = "https://iam.cloud.ibm.com/identity/userinfo"
@@ -336,7 +336,7 @@ object IbmCloudAuth {
             else return Failure(new IamApiErrorException("invalid token"))
           } else delayedReturn = Failure(new IamApiErrorException(response.body.toString))
         } catch {
-          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchangeMessage.translateMessage("error.authenticating.iam.token", e.getMessage)))
+          case e: Exception => delayedReturn = Failure(new IamApiErrorException(ExchMsg.translate("error.authenticating.iam.token", e.getMessage)))
         }
       }
       delayedReturn // if we tried the max times and never got a successful positive or negative, return what we last got
@@ -366,7 +366,7 @@ object IbmCloudAuth {
           // (We don't want to do an upsert in createUser in case the user has changed it since it was created, e.g. set admin true)
           DBIO.successful(Success(UserRow(authInfo.org + "/" + userInfo.user, "", "", admin = false, "", "", "")))
         } else {
-          DBIO.failed(new UserCreateException(ExchangeMessage.translateMessage("error.creating.user", authInfo.org, userInfo.user, t.getMessage)))
+          DBIO.failed(new UserCreateException(ExchMsg.translate("error.creating.user", authInfo.org, userInfo.user, t.getMessage)))
 
         }
       }
@@ -380,13 +380,13 @@ object IbmCloudAuth {
       // Handle any exceptions, including db problems. Note: exceptions from this get caught in login() above
       case timeout: java.util.concurrent.TimeoutException =>
         logger.error("db timed out getting pw/token for '" + userInfo.user + "' . " + timeout.getMessage)
-        throw new DbTimeoutException(ExchangeMessage.translateMessage("db.timeout.getting.token", userInfo.user, timeout.getMessage))
+        throw new DbTimeoutException(ExchMsg.translate("db.timeout.getting.token", userInfo.user, timeout.getMessage))
       // catch any of ours and rethrow
       case ourException: AuthException => throw ourException
       // assume something we don't recognize is a db access problem
       case other: Throwable =>
         logger.error("db connection error getting pw/token for '" + userInfo.user + "': " + other.getMessage)
-        throw new DbConnectionException(ExchangeMessage.translateMessage("db.threw.exception", other.getMessage))
+        throw new DbConnectionException(ExchMsg.translate("db.threw.exception", other.getMessage))
     }
     // Note: not sure how to know here whether we successfully add a user and therefore should add it to the admin cache, so we'll just let that get added next time it is needed
     awaitResult
@@ -409,7 +409,7 @@ object IbmCloudAuth {
     if (isIcp) {
       if (authInfo.keyType == "iamtoken") {
         // An ICP token, we don't have the org of the creds yet, need to get it
-        var delayedReturn: DBIOAction[String, NoStream, Effect] = DBIO.failed(new AuthInternalErrorException(ExchangeMessage.translateMessage("iam.return.value.not.set")))
+        var delayedReturn: DBIOAction[String, NoStream, Effect] = DBIO.failed(new AuthInternalErrorException(ExchMsg.translate("iam.return.value.not.set")))
         for (i <- 1 to iamRetryNum) {
           try {
             // If this token was authenticated via ICP IAM, we are associating that with the cluster-name org, so just get cluster name. Works for both ICP 3.2.0 and 3.2.1
@@ -440,7 +440,7 @@ object IbmCloudAuth {
               delayedReturn = DBIO.failed(new IamApiErrorException(response.body.toString))
             }
           } catch {
-            case e: Exception => delayedReturn = DBIO.failed(new IamApiErrorException(ExchangeMessage.translateMessage("error.authenticating.icp.iam.token", e.getMessage)))
+            case e: Exception => delayedReturn = DBIO.failed(new IamApiErrorException(ExchMsg.translate("error.authenticating.icp.iam.token", e.getMessage)))
           }
         }
         delayedReturn // if we tried the max times and never got a successful positive or negative, return what we last got

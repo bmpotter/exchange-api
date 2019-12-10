@@ -223,7 +223,7 @@ trait AuthorizationSupport {
     // Get their current hashed pw to use as the secret
     AuthCache.getUser(username) match {
       case Some(userHashedTok) => Token.isValid(token, userHashedTok)
-      case None => throw new InvalidCredentialsException(ExchangeMessage.translateMessage("invalid.credentials"))
+      case None => throw new InvalidCredentialsException(ExchMsg.translate("invalid.credentials"))
     }
   }
 
@@ -261,7 +261,7 @@ trait AuthorizationSupport {
         }
       } catch {
         case _: Exception =>
-          Failure(new AccessDeniedException(identity.accessDeniedMsg(access)))
+          Failure(new AccessDeniedException(identity.accessDeniedMsg(access, target)))
       }
     }
   }
@@ -278,7 +278,7 @@ trait AuthorizationSupport {
     def isAdmin = false       // IUser overrides this
     def isAnonymous = false // = creds.isAnonymous
     def identityString = creds.id     // for error msgs
-    def accessDeniedMsg(access: Access) = ExchangeMessage.translateMessage("access.denied.no.auth", identityString, access)
+    def accessDeniedMsg(access: Access, target: Target) = ExchMsg.translate("access.denied.no.auth", identityString, access, target.toAccessMsg)
     //var hasFrontEndAuthority = false   // true if this identity was already vetted by the front end
     def isMultiTenantAgbot: Boolean = return false
 
@@ -400,7 +400,7 @@ trait AuthorizationSupport {
       //logger.trace("IUser.authorizeTo() requiredAccess: "+requiredAccess)
       //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
-      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
+      else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
     }
 
     override def isAdmin: Boolean = {
@@ -497,7 +497,7 @@ trait AuthorizationSupport {
         }
       //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
-      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
+      else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
 
     }
 
@@ -569,7 +569,7 @@ trait AuthorizationSupport {
         }
       //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
-      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
+      else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
     }
 
     override def isMultiTenantAgbot: Boolean = return getOrg == "IBM"    //someday: implement instance-level ACLs instead of hardcoding this
@@ -650,7 +650,7 @@ trait AuthorizationSupport {
         }
       //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
-      else Failure(new AccessDeniedException(accessDeniedMsg(access)))
+      else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
     }
   }
 
@@ -661,6 +661,8 @@ trait AuthorizationSupport {
     def mine: Boolean = return getId == "#"
     def isPublic: Boolean = return false    // is overridden by some subclasses
     def isOwner(user: IUser): Boolean = return false    // is overridden by some subclasses
+    def label: String = ""    // overridden by subclasses. This should be the exchange resource
+    def toAccessMsg = s"$label=$id"  // the way the target should be described in access denied msgs
 
     // Returns just the orgid part of the resource
     def getOrg: String = {
@@ -684,10 +686,14 @@ trait AuthorizationSupport {
   case class TOrg(id: String) extends Target {
     override def getOrg = id    // otherwise the regex in the base class will return blank because there is no /
     override def getId = ""
+    override def label = "org"
   }
+
   case class TUser(id: String) extends Target {
     override def isOwner(user: IUser): Boolean = id == user.creds.id
+    override def label = "user"
   }
+
   case class TNode(id: String) extends Target {
     override def isOwner(user: IUser): Boolean = {
       AuthCache.getNodeOwner(id) match {
@@ -695,7 +701,9 @@ trait AuthorizationSupport {
         case None => return true    // if we did not find it, we consider that as owning it because we will create it
       }
     }
+    override def label = "node"
   }
+
   case class TAgbot(id: String) extends Target {
     override def isOwner(user: IUser): Boolean = {
       AuthCache.getAgbotOwner(id) match {
@@ -703,7 +711,9 @@ trait AuthorizationSupport {
         case None => return true    // if we did not find it, we consider that as owning it because we will create it
       }
     }
+    override def label = "agbot"
   }
+
   case class TService(id: String) extends Target {      // for services only the user that created it can update/delete it
     override def isOwner(user: IUser): Boolean = {
       AuthCache.getServiceOwner(id) match {
@@ -712,7 +722,9 @@ trait AuthorizationSupport {
       }
     }
     override def isPublic: Boolean = if (all) return true else return AuthCache.getServiceIsPublic(id).getOrElse(false)
+    override def label = "service"
   }
+
   case class TPattern(id: String) extends Target {      // for patterns only the user that created it can update/delete it
     override def isOwner(user: IUser): Boolean = {
       AuthCache.getPatternOwner(id) match {
@@ -721,7 +733,9 @@ trait AuthorizationSupport {
       }
     }
     override def isPublic: Boolean = if (all) return true else return AuthCache.getPatternIsPublic(id).getOrElse(false)
+    override def label = "pattern"
   }
+
   case class TBusiness(id: String) extends Target {      // for business policies only the user that created it can update/delete it
     override def isOwner(user: IUser): Boolean = {
       AuthCache.getBusinessOwner(id) match {
@@ -730,6 +744,10 @@ trait AuthorizationSupport {
       }
     }
     override def isPublic: Boolean = if (all) return true else return AuthCache.getBusinessIsPublic(id).getOrElse(false)
+    override def label = "business policy"
   }
-  case class TAction(id: String = "") extends Target    // for post rest api methods that do not target any specific resource (e.g. admin operations)
+
+  case class TAction(id: String = "") extends Target { // for post rest api methods that do not target any specific resource (e.g. admin operations)
+    override def label = "action"
+  }
 }

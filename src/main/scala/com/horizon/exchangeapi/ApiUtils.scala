@@ -47,20 +47,20 @@ object HttpCode {
 /** These are used as the response structure for most PUTs, POSTs, and DELETEs. */
 case class ApiResponse(code: String, msg: String)
 object ApiResponseType {
-  val BADCREDS = ExchangeMessage.translateMessage("api.bad.creds")
-  val ACCESS_DENIED = ExchangeMessage.translateMessage("api.access.denied")
-  val ALREADY_EXISTS = ExchangeMessage.translateMessage("api.already.exists")
-  val BAD_INPUT = ExchangeMessage.translateMessage("api.invalid.input")
-  val NOT_FOUND = ExchangeMessage.translateMessage("api.not.found")
-  val INTERNAL_ERROR = ExchangeMessage.translateMessage("api.internal.error")
-  val NOT_IMPLEMENTED = ExchangeMessage.translateMessage("api.not.implemented")
-  val BAD_GW = ExchangeMessage.translateMessage("api.db.connection.error")
-  val GW_TIMEOUT = ExchangeMessage.translateMessage("api.db.timeout")
-  val ERROR = ExchangeMessage.translateMessage("error")
-  val WARNING = ExchangeMessage.translateMessage("warning")
-  val INFO = ExchangeMessage.translateMessage("info")
-  val OK = ExchangeMessage.translateMessage("ok")
-  val TOO_BUSY = ExchangeMessage.translateMessage("too.busy")
+  val BADCREDS = ExchMsg.translate("api.bad.creds")
+  val ACCESS_DENIED = ExchMsg.translate("api.access.denied")
+  val ALREADY_EXISTS = ExchMsg.translate("api.already.exists")
+  val BAD_INPUT = ExchMsg.translate("api.invalid.input")
+  val NOT_FOUND = ExchMsg.translate("api.not.found")
+  val INTERNAL_ERROR = ExchMsg.translate("api.internal.error")
+  val NOT_IMPLEMENTED = ExchMsg.translate("api.not.implemented")
+  val BAD_GW = ExchMsg.translate("api.db.connection.error")
+  val GW_TIMEOUT = ExchMsg.translate("api.db.timeout")
+  val ERROR = ExchMsg.translate("error")
+  val WARNING = ExchMsg.translate("warning")
+  val INFO = ExchMsg.translate("info")
+  val OK = ExchMsg.translate("ok")
+  val TOO_BUSY = ExchMsg.translate("too.busy")
 }
 
 trait ExchangeRejection extends Rejection {
@@ -88,6 +88,11 @@ final case class AuthRejection(t: Throwable) extends ExchangeRejection {
     case e: AuthException => e.getMessage
     case _ => "invalid credentials" // should never get here
   }
+}
+
+final case class BadInputRejection(apiRespMsg: String) extends ExchangeRejection {
+  def httpCode = StatusCodes.BadRequest
+  def apiRespCode = ApiResponseType.BAD_INPUT
 }
 
 final case class AccessDeniedRejection(apiRespMsg: String) extends ExchangeRejection {
@@ -120,22 +125,12 @@ final case class GwTimeoutRejection(apiRespMsg: String) extends ExchangeRejectio
   def apiRespCode = ApiResponseType.GW_TIMEOUT
 }
 
-object ExchangeMessage {
-  //TODO: Refactor translateMessage so that it doesn't need to determine Messages call based on size of args array
-  def translateMessage(key: String, args: Any*): String = {
+// Returns a msg from the translated files, with the args substituted
+object ExchMsg {
+  def translate(key: String, args: Any*): String = {
     implicit val userLang = Lang(sys.env.getOrElse("HZN_EXCHANGE_LANG", sys.env.getOrElse("LANG", "en")))
     if (args.nonEmpty) {
-      if (args.size == 1) {
-        return Messages(key, args(0))
-      } else if (args.size == 2) {
-        return Messages(key, args(0), args(1))
-      } else if (args.size == 3) {
-        return Messages(key, args(0), args(1), args(2))
-      } else if (args.size == 4) {
-        return Messages(key, args(0), args(1), args(2), args(3))
-      } else if (args.size == 5) {
-        return Messages(key, args(0), args(1), args(2), args(3), args(4))
-      }
+      return Messages(key, args: _*)
     }
     Messages(key)
   }

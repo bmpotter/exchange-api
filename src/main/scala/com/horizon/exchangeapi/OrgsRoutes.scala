@@ -22,6 +22,9 @@ import akka.event.{ Logging, LoggingAdapter }
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
+//import com.horizon.exchangeapi.auth._
+import org.json4s._
+//import org.json4s.jackson.Serialization.write
 //import com.horizon.exchangeapi.auth.AuthException
 //import akka.http.scaladsl.server.ValidationRejection
 //import com.horizon.exchangeapi.auth._
@@ -62,23 +65,63 @@ import spray.json.DefaultJsonProtocol
 // Note: These are the input and output structures for /orgs routes. Swagger and/or json seem to require they be outside the trait.
 
 /** Output format for GET /orgs */
-//final case class TmpOrg(orgType: String, label: String, description: String, lastUpdated: String)
-//final case class TmpOrgs(orgs: Seq[TmpOrg])
-
 final case class GetOrgsResponse(orgs: Map[String, Org], lastIndex: Int)
-//def toTmpOrgs = TmpOrgs(orgs.values.map(v => TmpOrg(v.orgType, v.label, v.description, v.lastUpdated)).toSeq)
-//final case class GetOrgAttributeResponse(attribute: String, value: String)
+case class GetOrgAttributeResponse(attribute: String, value: String)
+
+/** Input format for PUT /orgs/<org-id> */
+case class PostPutOrgRequest(orgType: Option[String], label: String, description: String, tags: Option[Map[String, String]]) {
+  protected implicit val jsonFormats: Formats = DefaultFormats
+  def validate() = {}
+
+  def toOrgRow(orgId: String) = OrgRow(orgId, orgType.getOrElse(""), label, description, ApiTime.nowUTC, tags.map(ts => ApiJsonUtil.asJValue(ts)))
+}
+
+case class PatchOrgRequest(orgType: Option[String], label: Option[String], description: Option[String], tags: Option[Map[String, Option[String]]]) {
+  protected implicit val jsonFormats: Formats = DefaultFormats
+
+  /** Returns a tuple of the db action to update parts of the org, and the attribute name being updated. */
+  def getDbUpdate(orgId: String): (DBIO[_], String) = {
+    import com.horizon.exchangeapi.tables.ExchangePostgresProfile.plainAPI._
+    import scala.concurrent.ExecutionContext.Implicits.global
+    val lastUpdated = ApiTime.nowUTC
+    //todo: support updating more than 1 attribute
+    // find the 1st attribute that was specified in the body and create a db action to update it for this org
+    orgType match { case Some(ot) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.orgType, d.lastUpdated)).update((orgId, ot, lastUpdated)), "orgType"); case _ => ; }
+    label match { case Some(lab) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.label, d.lastUpdated)).update((orgId, lab, lastUpdated)), "label"); case _ => ; }
+    description match { case Some(desc) => return ((for { d <- OrgsTQ.rows if d.orgid === orgId } yield (d.orgid, d.description, d.lastUpdated)).update((orgId, desc, lastUpdated)), "description"); case _ => ; }
+    tags match {
+      case Some(ts) =>
+        val (deletes, updates) = ts.partition {
+          case (_, v) => v.isEmpty
+        }
+        val dbUpdates =
+          if (updates.isEmpty) Seq()
+          else Seq(sqlu"update orgs set tags = coalesce(tags, '{}'::jsonb) || ${ApiJsonUtil.asJValue(updates)} where orgid = $orgId")
+
+        val dbDeletes =
+          for (tag <- deletes.keys.toSeq) yield {
+            sqlu"update orgs set tags = tags - $tag where orgid = $orgId"
+          }
+        val allChanges = dbUpdates ++ dbDeletes
+        return (DBIO.sequence(allChanges).map(counts => counts.sum), "tags")
+      case _ =>
+    }
+    return (null, null)
+  }
+}
 
 /** Routes for /orgs */
-@Path("/orgs")
+@Path("/v1/orgs")
 class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with AuthenticationSupport {
   // Tell spray how to marshal our types (models) to/from the rest client
   // old way: protected implicit def jsonFormats: Formats
   import DefaultJsonProtocol._
   // Note: it is important to use the immutable version of collections like Map
   // Note: if you accidentally omit a class here, you may get a msg like: [error] /Users/bp/src/github.com/open-horizon/exchange-api/src/main/scala/com/horizon/exchangeapi/OrgsRoutes.scala:49:44: could not find implicit value for evidence parameter of type spray.json.DefaultJsonProtocol.JF[scala.collection.immutable.Seq[com.horizon.exchangeapi.TmpOrg]]
+  implicit val apiResponseJsonFormat = jsonFormat2(ApiResponse)
   implicit val orgJsonFormat = jsonFormat5(Org)
-  implicit val orgsJsonFormat = jsonFormat2(GetOrgsResponse)
+  implicit val getOrgsResponseJsonFormat = jsonFormat2(GetOrgsResponse)
+  implicit val getOrgAttributeResponseJsonFormat = jsonFormat2(GetOrgAttributeResponse)
   //implicit val actionPerformedJsonFormat = jsonFormat1(ActionPerformed)
 
   def db: Database = ExchangeApiApp.getDb
@@ -94,40 +137,44 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with
   */
 
   // Note: to make swagger work, each route should be returned by its own method: https://github.com/swagger-akka-http/swagger-akka-http
-  def routes: Route = orgsGetRoute
+  // Note: putting the orgs prefix here, because it might help performance by disqualifying all of these routes early
+  def routes: Route = pathPrefix("orgs") { orgsGetRoute ~ orgGetRoute }
 
   // ====== GET /orgs ================================
 
   /* Akka-http Directives Notes:
   * Directives reference: https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/alphabetically.html
-  * Get variable parts of the route: path("orgs" / String) { orgid=>
+  * The path() directive gobbles up the rest of the url path (until the params at ?). So you can't have any other path directives after it (and path directives before it must be pathPrefix())
+  * Get variable parts of the route: ( get & pathPrefix("orgs") & path(Segment) ) { orgid=>
+  * Alternative to get variable parts of the route: path("orgs" / Segment) { orgid=>
   * Get the request context: get { ctx => println(ctx.request.method.name)
   * Get the request: extractRequest { request => println(request.headers.toString())
   * Concatenate directive extractions: (path("order" / IntNumber) & get & extractMethod) { (id, m) =>
   * For url query parameters, the single quote in scala means it is a symbol, the question mark means it's optional */
 
+  // Swagger annotation reference: https://github.com/swagger-api/swagger-core/wiki/Swagger-2.X---Annotations
+  // Note: i think these annotations can't have any comments between them and the method def
   @GET
+  @Path("")
   @Operation(summary = "Returns all orgs", description = """Returns some or all org definitions in the exchange DB. Can be run by any user if filter orgType=IBM is used, otherwise can only be run by the root user.""",
-    method = "GET",
     parameters = Array(
       new Parameter(name = "orgtype", in = ParameterIn.QUERY, required = false, description = "Filter results to only include orgs with this org type. A common org type is 'IBM'.",
         content = Array(new Content(schema = new Schema(implementation = classOf[String], allowableValues = Array("IBM"))))),
-      new Parameter(name = "label", in = ParameterIn.QUERY, required = false, description = "Filter results to only include orgs with this label (can include % for wildcard - the URL encoding for % is %25)",
-        content = Array(new Content(schema = new Schema(implementation = classOf[String]))))),
+      new Parameter(name = "label", in = ParameterIn.QUERY, required = false, description = "Filter results to only include orgs with this label (can include % for wildcard - the URL encoding for % is %25)")),
     responses = Array(
-      new responses.ApiResponse(responseCode = "200", description = "GET /orgs response",
+      new responses.ApiResponse(responseCode = "200", description = "response body",
         content = Array(new Content(schema = new Schema(implementation = classOf[GetOrgsResponse])))),
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgsGetRoute: Route = (get & path("orgs") & extractCredentials & parameter(('orgtype.?, 'label.?))) { (creds, orgType, label) =>
+  def orgsGetRoute: Route = (get & parameter(('orgtype.?, 'label.?)) & extractCredentials) { (orgType, label, creds) =>
     logger.debug(s"Doing GET /orgs with creds:$creds, orgType:$orgType, label:$label")
     // If filter is orgType=IBM then it is a different access required than reading all orgs
     val access = if (orgType.getOrElse("").contains("IBM")) Access.READ_IBM_ORGS else Access.READ_OTHER_ORGS
     auth(creds, TOrg("*"), access) match {
       case Failure(t) => reject(AuthRejection(t))
       case Success(identity) =>
-        validate(orgType.isEmpty || orgType.get == "IBM", ExchangeMessage.translateMessage("org.get.orgtype")) {
+        validate(orgType.isEmpty || orgType.get == "IBM", ExchMsg.translate("org.get.orgtype")) {
           complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
             logger.debug("GET /orgs identity: " + identity)
             var q = OrgsTQ.rows.subquery
@@ -145,7 +192,6 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with
               logger.debug("GET /orgs result size: " + list.size)
               val orgs = list.map(a => a.orgId -> a.toOrg).toMap
               val code = if (orgs.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
-
               (code, GetOrgsResponse(orgs, 0))
             })
           }) // end of complete
@@ -153,37 +199,55 @@ class OrgsRoutes(implicit val system: ActorSystem) extends SprayJsonSupport with
     } // end of auth match
   }
 
-  /*
-get("/orgs", operation(getOrgs)) ({
-  // If filter is orgType=IBM then it is a different access required than reading all orgs
-  val access = if (params.get("orgtype").contains("IBM")) Access.READ_IBM_ORGS else Access.READ    // read all orgs
+  // ====== GET /orgs/{orgid} ================================
+  @GET
+  @Path("{orgid}")
+  @Operation(summary = "Returns a org", description = """Returns the org with the specified id in the exchange DB. Can be run by any user in this org.""",
+    parameters = Array(
+      new Parameter(name = "orgid", in = ParameterIn.PATH, description = "Organization id."),
+      new Parameter(name = "attribute", in = ParameterIn.QUERY, required = false, description = "Which attribute value should be returned. Only 1 attribute can be specified. If not specified, the entire org resource will be returned.")),
+    responses = Array(
+      new responses.ApiResponse(responseCode = "200", description = "response body",
+        content = Array(new Content(schema = new Schema(implementation = classOf[GetOrgsResponse])))),
+      new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
+      new responses.ApiResponse(responseCode = "403", description = "access denied"),
+      new responses.ApiResponse(responseCode = "404", description = "not found")))
+  def orgGetRoute: Route = (get & path(Segment) & parameter('attribute.?) & extractCredentials) { (orgId, attribute, creds) =>
+    logger.debug(s"Doing GET /orgs/{orgid} with orgId:$orgId, attribute:$attribute, creds:$creds")
+    //def orgGetRoute: Route = (get & pathPrefix("orgs" / Segment)) { (orgId) =>
+    //logger.debug(s"Doing GET /orgs/{orgid} with orgId:$orgId")
+    //complete({ (StatusCodes.OK, "here") })
+    auth(creds, TOrg(orgId), Access.READ) match {
+      case Failure(t) => reject(AuthRejection(t))
+      case Success(_) =>
+        //validate(orgType.isEmpty || orgType.get == "IBM", ExchangeMessage.translateMessage("org.get.orgtype")) {
+        complete({ // this is an anonymous function that returns Future[(StatusCode, GetOrgsResponse)]
+          attribute match {
+            case Some(attr) => // Only returning 1 attr of the org
+              val q = OrgsTQ.getAttribute(orgId, attr) // get the proper db query for this attribute
+              if (q == null) (StatusCodes.BadRequest, ApiResponse(ApiResponseType.BAD_INPUT, ExchMsg.translate("org.attr.not.part.of.org", attr)))
+              else db.run(q.result).map({ list =>
+                logger.debug("GET /orgs/" + orgId + " attribute result: " + list.toString)
+                val code = if (list.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
+                // Note: scala is unhappy when db.run returns 2 different possible types, so we can't return ApiResponse in the case of not found
+                /* if (list.nonEmpty) */ (code, GetOrgAttributeResponse(attr, OrgsTQ.renderAttribute(list)))
+                //else (StatusCodes.NotFound, ApiResponse(ApiResponseType.NOT_FOUND, ExchMsg.translate("org.not.found", orgId)))
+              })
 
-  authenticate().authorizeTo(TOrg("*"),access)
-  val resp = response
-  var q = OrgsTQ.rows.subquery
-  // If multiple filters are specified they are ANDed together by adding the next filter to the previous filter by using q.filter
-  params.get("orgtype").foreach(orgType => { if (orgType.contains("%")) q = q.filter(_.orgType like orgType) else q = q.filter(_.orgType === orgType) })
-  params.get("label").foreach(label => { if (label.contains("%")) q = q.filter(_.label like label) else q = q.filter(_.label === label) })
-
-  db.run(q.result).map({ list =>
-    logger.debug("GET /orgs result size: "+list.size)
-    val orgs = new MutableHashMap[String,Org]
-    if (list.nonEmpty) for (a <- list) orgs.put(a.orgId, a.toOrg)
-    if (orgs.nonEmpty) resp.setStatus(HttpCode.OK)
-    else resp.setStatus(HttpCode.NOT_FOUND)
-    GetOrgsResponse(orgs.toMap, 0)
-  })
-})
-*/
-
-  /*
-def renderAttribute(attribute: scala.Seq[Any]): String = {
-  attribute.head match {
-    case attr: JValue => write(attr)
-    case attr => attr.toString
+            case None => // Return the whole org resource
+              db.run(OrgsTQ.getOrgid(orgId).result).map({ list =>
+                logger.debug("GET /orgs result size: " + list.size)
+                val orgs = list.map(a => a.orgId -> a.toOrg).toMap
+                val code = if (orgs.nonEmpty) StatusCodes.OK else StatusCodes.NotFound
+                (code, GetOrgsResponse(orgs, 0))
+              })
+          } // attribute match
+        }) // end of complete
+      //} // end of validate
+    } // end of auth match
   }
-}
 
+  /*
 // ====== GET /orgs/{orgid} ================================
 val getOneOrg =
   (apiOperation[GetOrgsResponse]("getOneOrg")

@@ -107,10 +107,10 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
         // Handle db problems
         case timeout: java.util.concurrent.TimeoutException =>
           logger.error("db timed out getting pw/token for '" + creds.id + "' . " + timeout.getMessage)
-          throw new DbTimeoutException(ExchangeMessage.translateMessage("db.timeout.getting.token", creds.id, timeout.getMessage))
+          throw new DbTimeoutException(ExchMsg.translate("db.timeout.getting.token", creds.id, timeout.getMessage))
         case other: Throwable =>
           logger.error("db connection error getting pw/token for '" + creds.id + "': " + other.getMessage)
-          throw new DbConnectionException(ExchangeMessage.translateMessage("db.threw.exception", other.getMessage))
+          throw new DbConnectionException(ExchMsg.translate("db.threw.exception", other.getMessage))
       } // end of getting dbHashedTok
 
       if (dbHashedTok == "") {
@@ -203,10 +203,10 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
         // Handle db problems
         case timeout: java.util.concurrent.TimeoutException =>
           logger.error("db timed out getting " + attrName + " boolean for '" + id + "' . " + timeout.getMessage)
-          throw new DbTimeoutException(ExchangeMessage.translateMessage("db.timeout.getting.bool", attrName, id, timeout.getMessage))
+          throw new DbTimeoutException(ExchMsg.translate("db.timeout.getting.bool", attrName, id, timeout.getMessage))
         case other: Throwable =>
           logger.error("db connection error getting " + attrName + " boolean for '" + id + "': " + other.getMessage)
-          throw new DbConnectionException(ExchangeMessage.translateMessage("db.threw.exception", other.getMessage))
+          throw new DbConnectionException(ExchMsg.translate("db.threw.exception", other.getMessage))
       }
     }
 
@@ -286,10 +286,10 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
         // Handle db problems
         case timeout: java.util.concurrent.TimeoutException =>
           logger.error("db timed out getting owner for '" + id + "' . " + timeout.getMessage)
-          throw new DbTimeoutException(ExchangeMessage.translateMessage("db.timeout.getting.owner", id, timeout.getMessage))
+          throw new DbTimeoutException(ExchMsg.translate("db.timeout.getting.owner", id, timeout.getMessage))
         case other: Throwable =>
           logger.error("db connection error getting owner for '" + id + "': " + other.getMessage)
-          throw new DbConnectionException(ExchangeMessage.translateMessage("db.threw.exception", other.getMessage))
+          throw new DbConnectionException(ExchMsg.translate("db.threw.exception", other.getMessage))
       }
     }
 

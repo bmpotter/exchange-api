@@ -2,8 +2,9 @@ package com.horizon.exchangeapi.tables
 
 import com.horizon.exchangeapi.ApiJsonUtil
 import org.json4s._
-import ExchangePostgresProfile.api._
 //import org.json4s.jackson.Serialization.read
+import org.json4s.jackson.Serialization.write
+import ExchangePostgresProfile.api._
 //import ExchangePostgresProfile.jsonMethods._
 
 // Note: We use json4s in the table classes to serialize them to/from the db, but we use spray json in the route classes to serialize to/from the client. We should keep these separate.
@@ -39,6 +40,7 @@ class Orgs(tag: Tag) extends Table[OrgRow](tag, "orgs") {
 
 // Instance to access the orgs table
 object OrgsTQ {
+  protected implicit val jsonFormats: Formats = DefaultFormats
   val rows = TableQuery[Orgs]
 
   def getOrgid(orgid: String) = rows.filter(_.orgid === orgid)
@@ -65,6 +67,15 @@ object OrgsTQ {
 
   /** Returns the actions to delete the org and the blockchains that reference it */
   def getDeleteActions(orgid: String): DBIO[_] = getOrgid(orgid).delete // with the foreign keys set up correctly and onDelete=cascade, the db will automatically delete these associated blockchain rows
+
+  // Needed to convert the tags attribute into a string a json to return to the client
+  def renderAttribute(attribute: scala.Seq[Any]): String = {
+    if (attribute.isEmpty) ""
+    else attribute.head match {
+      case attr: JValue => write(attr)
+      case attr => attr.toString
+    }
+  }
 }
 
 // This is the org table minus the key - used as the data structure to return to the REST clients

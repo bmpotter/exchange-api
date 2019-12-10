@@ -12,6 +12,8 @@ import io.swagger.v3.oas.models.ExternalDocumentation
   - Swagger annotations: https://github.com/swagger-api/swagger-core/wiki/Swagger-2.X---Annotations
  */
 
+//someday: disable the Try It Out button via the plugin suggestion: https://github.com/swagger-api/swagger-ui/issues/3725
+
 //class SwaggerDocService /* (system: ActorSystem) */ extends SwaggerHttpService {
 object SwaggerDocService extends SwaggerHttpService {
   //override implicit val actorSystem: ActorSystem = system

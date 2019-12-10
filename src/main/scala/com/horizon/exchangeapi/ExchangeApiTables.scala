@@ -81,7 +81,7 @@ object ExchangeApiTables {
           }
         } else {
           logger.debug("ExchangeApiTables.upgradeDb: success v was empty")
-          DBIO.failed(new Throwable(ExchangeMessage.translateMessage("db.upgrade.error"))).asTry
+          DBIO.failed(new Throwable(ExchMsg.translate("db.upgrade.error"))).asTry
         }
         case Failure(t) => if (t.getMessage.contains("""relation "schema" does not exist""")) {
           logger.info("Schema table does not exist, initializing the DB...")
@@ -92,9 +92,9 @@ object ExchangeApiTables {
     })).map({ xs =>
       logger.debug("ExchangeApiTables.upgradeDb: processing upgrade check, upgrade, or init db result") // dont want to display xs.toString because it will have a scary looking error in it in the case of the db already being at the latest schema
       xs match {
-        case Success(_) => ApiResponse(ApiResponseType.OK, ExchangeMessage.translateMessage("db.upgraded.successfully")) // cant tell the diff between these 2, they both return Success(())
+        case Success(_) => ApiResponse(ApiResponseType.OK, ExchMsg.translate("db.upgraded.successfully")) // cant tell the diff between these 2, they both return Success(())
         case Failure(t) => if (t.getMessage.contains(upgradeNotNeededMsg)) ApiResponse(ApiResponseType.OK, t.getMessage) // db already at latest schema
-        else ApiResponse(ApiResponseType.INTERNAL_ERROR, ExchangeMessage.translateMessage("db.not.upgraded", t.toString)) // we hit some problem
+        else ApiResponse(ApiResponseType.INTERNAL_ERROR, ExchMsg.translate("db.not.upgraded", t.toString)) // we hit some problem
       }
     }), Duration(ExchConfig.getInt("api.db.upgradeTimeoutSeconds"), SECONDS)) // this is the rest of Await.result(), wait 1 minute for db init/upgrade to complete
     if (upgradeResult.code == ApiResponseType.OK) logger.info(upgradeResult.msg)
