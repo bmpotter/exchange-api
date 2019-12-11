@@ -21,8 +21,6 @@ import com.horizon.exchangeapi.auth.AuthException
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
-//import spray.json.DefaultJsonProtocol
-//import spray.json._
 import org.json4s._
 //import org.json4s.{DefaultFormats, JValue}
 //import org.json4s.jackson.JsonMethods._
@@ -30,7 +28,8 @@ import org.json4s.jackson.Serialization.write
 
 /** HTTP codes, taken from https://en.wikipedia.org/wiki/List_of_HTTP_status_codes and https://www.restapitutorial.com/httpstatuscodes.html */
 object HttpCode {
-  /* val OK = 200
+  /* Now using the akka StatusCodes instead
+  val OK = 200
   val PUT_OK = 201
   val POST_OK = 201
   val DELETED = 204 // technically means no content, but usually used for DELETE
@@ -80,9 +79,6 @@ object ApiRespType {
 }
 
 trait ExchangeRejection extends Rejection {
-  // Needed so akka can marshal ApiResponse into json to return it to the client
-  //import DefaultJsonProtocol._
-  //implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
   private implicit val formats = DefaultFormats
 
   def httpCode: StatusCode
@@ -441,7 +437,8 @@ case class Nth(n: Int) {
   }
 }
 
-object ApiJsonUtil {
+object ApiUtil {
+  // Convert an AnyRef to JValue
   def asJValue(src: AnyRef): JValue = {
     import org.json4s.{ Extraction, NoTypeHints }
     import org.json4s.jackson.Serialization

@@ -82,14 +82,6 @@ object AuthRoles {
   val Agbot = "Agbot"
   val Anonymous = "Anonymous"
   val requiredRoles = Set(Anonymous, User, AdminUser, SuperUser, Node, Agbot)
-  /*
-  val SuperUser = "SuperUser"
-  val AdminUser = "AdminUser"
-  val User = "User"
-  val Node = "Node"
-  val Agbot = "Agbot"
-  val Anonymous = "Anonymous"
-  */
 }
 
 /* Not using the java authorization framework anymore, because it doesn't add any value for us and adds complexity
@@ -200,17 +192,13 @@ case class CompositeId(compositeId: String) {
 
 case class RequestInfo(
   creds: Creds,
-  //request: HttpServletRequest,
-  //params: Params,
   dbMigration: Boolean,
-  //anonymousOk: Boolean,
   hint: String,
 )
 
 /*
 AuthorizationSupport is used by AuthenticationSupport, auth/Module, and auth/IbmCloudModule.
 It contains several authentication utilities:
-  - getCredentials (pulls the creds from the request)
   - AuthenticatedIdentity
   - all the Identity subclasses (used for local authentication)
   - all the Target subclasses (used for authorization)
@@ -233,30 +221,18 @@ trait AuthorizationSupport {
 
     // Determines if this authenticated identity has the specified access to the specified target
     def authorizeTo(target: Target, access: Access): Try[Identity] = {
-      //var requiredAccess: Authorization = RequiresAccess(Access.NONE)
       try {
         identity match {
-          case IUser(_) => if (target.getId == "iamapikey" || target.getId == "iamtoken") {
+          case IUser(_) =>
+            if (target.getId == "iamapikey" || target.getId == "iamtoken") {
               // This is a cloud user
               val authenticatedIdentity = subject.getPrivateCredentials(classOf[IUser]).asScala.head.creds
-              //logger.debug("authenticatedIdentity=" + authenticatedIdentity.id)
-              /* requiredAccess = identity.authorizeTo(TUser(authenticatedIdentity.id), access)
-              requiredAccess.as(subject)
-              Success(IUser(authenticatedIdentity)) */
               identity.authorizeTo(TUser(authenticatedIdentity.id), access)
             } else {
-              // This is a local exchange user
-              //logger.debug("authorizeTo(): creds.id=" + identity.creds.id)
-              /* requiredAccess = identity.authorizeTo(target, access)
-              requiredAccess.as(subject)
-              Success(identity) */
               identity.authorizeTo(target, access)
             }
           case _ =>
             // This is an exchange node or agbot
-            /* requiredAccess = identity.authorizeTo(target, access)
-            requiredAccess.as(subject)
-            Success(identity) */
             identity.authorizeTo(target, access)
         }
       } catch {
@@ -291,7 +267,6 @@ trait AuthorizationSupport {
         if (isTokenValid(creds.token, creds.id)) return toIUser
         //else throw new InvalidCredentialsException("invalid token")  <- hint==token means it *could* be a token, not that it *must* be
       }
-      //for ((k, v) <- AuthCache.users.things) { logger.debug("users cache entry: "+k+" "+v) }
       AuthCache.ids.getValidType(creds) match {
         case CacheIdType.User => return toIUser
         case CacheIdType.Node => return toINode
@@ -397,8 +372,6 @@ trait AuthorizationSupport {
             case TAction(_) => access // a user running an action
           }
         }
-      //logger.trace("IUser.authorizeTo() requiredAccess: "+requiredAccess)
-      //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
       else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
     }
@@ -415,22 +388,6 @@ trait AuthorizationSupport {
       if (target.mine) true
       else if (target.all) false
       else target.isOwner(this)
-      /* moved these into the Target subclasses
-      else {
-        val owner = target match {
-          case TUser(id) => return id == creds.id
-          case TNode(id) => AuthCache.getNodeOwner(id)
-          case TAgbot(id) => AuthCache.getAgbotOwner(id)
-          case TService(id) => AuthCache.getServiceOwner(id)
-          case TPattern(id) => AuthCache.getPatternOwner(id)
-          case TBusiness(id) => AuthCache.getBusinessOwner(id)
-          case _ => return false
-        }
-        owner match {
-          case Some(owner2) => if (owner2 == creds.id) return true else return false
-          case None => return true    // if we did not find it, we consider that as owning it because we will create it
-        }
-      } */
     }
   }
 
@@ -438,7 +395,6 @@ trait AuthorizationSupport {
     override lazy val role = AuthRoles.Node
 
     def authorizeTo(target: Target, access: Access): Try[Identity] = {
-      //if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
       // Transform any generic access into specific access
       val requiredAccess =
         if (!isMyOrg(target) && !target.isPublic && !isMsgToMultiTenantAgbot(target,access)) {
@@ -495,7 +451,6 @@ trait AuthorizationSupport {
             case TAction(_) => access // a node running an action
           }
         }
-      //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
       else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
 
@@ -510,7 +465,6 @@ trait AuthorizationSupport {
     override lazy val role = AuthRoles.Agbot
 
     def authorizeTo(target: Target, access: Access): Try[Identity] = {
-      //if (hasFrontEndAuthority) return FrontendAuth     // allow whatever it wants to do
       // Transform any generic access into specific access
       val requiredAccess =
         if (!isMyOrg(target) && !target.isPublic && !isMultiTenantAgbot) {
@@ -567,7 +521,6 @@ trait AuthorizationSupport {
             case TAction(_) => access // a agbot running an action
           }
         }
-      //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
       else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
     }
@@ -648,7 +601,6 @@ trait AuthorizationSupport {
             case TAction(_) => access // a anonymous running an action
           }
         }
-      //RequiresAccess(requiredAccess)
       if (Role.hasAuthorization(role, requiredAccess)) Success(this)
       else Failure(new AccessDeniedException(accessDeniedMsg(access, target)))
     }

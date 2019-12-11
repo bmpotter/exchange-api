@@ -1,6 +1,6 @@
 package com.horizon.exchangeapi.tables
 
-import com.horizon.exchangeapi.ApiJsonUtil
+import com.horizon.exchangeapi.ApiUtil
 import org.json4s._
 //import org.json4s.jackson.Serialization.read
 import org.json4s.jackson.Serialization.write
@@ -60,7 +60,7 @@ object OrgsTQ {
       case "label" => filter.map(_.label)
       case "description" => filter.map(_.description)
       case "lastUpdated" => filter.map(_.lastUpdated)
-      case "tags" => filter.map(_.tags.getOrElse(ApiJsonUtil.asJValue(Map.empty)))
+      case "tags" => filter.map(_.tags.getOrElse(ApiUtil.asJValue(Map.empty)))
       case _ => null
     }
   }
