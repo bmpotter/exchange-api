@@ -406,7 +406,7 @@ class UsersSuite extends FunSuite {
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK)
     val postConfirmResp = parse(response.body).extract[ApiResponse]
-    assert(postConfirmResp.code === ApiResponseType.OK)
+    assert(postConfirmResp.code === ApiRespType.OK)
   }
 
   /** Confirm encoded user/pw for user */
@@ -416,7 +416,7 @@ class UsersSuite extends FunSuite {
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK)
     val postConfirmResp = parse(response.body).extract[ApiResponse]
-    assert(postConfirmResp.code === ApiResponseType.OK)
+    assert(postConfirmResp.code === ApiRespType.OK)
   }
 
   /** Confirm user/pw for bad pw */
@@ -425,7 +425,7 @@ class UsersSuite extends FunSuite {
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.BADCREDS)
     val postConfirmResp = parse(response.body).extract[ApiResponse]
-    assert(postConfirmResp.code === ApiResponseType.BADCREDS)
+    assert(postConfirmResp.code === ApiRespType.BADCREDS)
   }
 
   // Test changing passwords =====================================================================
@@ -450,7 +450,7 @@ class UsersSuite extends FunSuite {
     info("code: " + response.code + ", response.body: " + response.body)
     assert(response.code === HttpCode.POST_OK)
     val postChangePwResp = parse(response.body).extract[ApiResponse]
-    assert(postChangePwResp.code === ApiResponseType.OK)
+    assert(postChangePwResp.code === ApiRespType.OK)
 
     // Now confirm the new pw
     response = Http(URL + "/users/" + user2 + "/confirm").method("post").headers(ACCEPT).headers(USERAUTH2NEW).asString
@@ -465,7 +465,7 @@ class UsersSuite extends FunSuite {
     info("code: " + response.code + ", response.body: " + response.body)
     assert(response.code === HttpCode.POST_OK)
     val postChangePwResp = parse(response.body).extract[ApiResponse]
-    assert(postChangePwResp.code === ApiResponseType.OK)
+    assert(postChangePwResp.code === ApiRespType.OK)
 
     // Now confirm the pw is back to original
     response = Http(URL + "/users/" + user2 + "/confirm").method("post").headers(ACCEPT).headers(USERAUTH2).asString

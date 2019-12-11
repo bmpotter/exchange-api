@@ -114,7 +114,7 @@ trait AuthenticationSupport extends AuthorizationSupport {
      */
     val encodedAuth = optionalHttpCredentials.map(_.token()).getOrElse("")
     val creds = AuthenticationSupport.parseCreds(encodedAuth)
-    logger.debug(s"authenticate: $creds")
+    //logger.debug(s"authenticate: $creds")
     if (creds.isEmpty) return Failure(new InvalidCredentialsException)
     val loginCtx = new LoginContext(
       "ExchangeApiLogin", // this is referencing a stanza in resources/jaas.config

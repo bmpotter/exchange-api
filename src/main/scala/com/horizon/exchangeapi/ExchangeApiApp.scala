@@ -14,7 +14,6 @@ import akka.http.scaladsl.server.RouteResult.Rejected
 import akka.http.scaladsl.server.directives.{ DebuggingDirectives, LogEntry }
 import com.mchange.v2.c3p0.ComboPooledDataSource
 import slick.jdbc.PostgresProfile.api._
-//import org.json4s._
 //import org.scalatra.json._
 //import org.scalatra.swagger._
 //import org.scalatra.CorsSupport   // allow cross-domain requests. Note: this is pulled in automatically by SwaggerSupport
@@ -34,8 +33,14 @@ import akka.stream.ActorMaterializer
 
 import akka.http.scaladsl.server.Directives._
 //import StatusCodes._
-import spray.json.DefaultJsonProtocol
-import spray.json._
+
+//import spray.json.DefaultJsonProtocol
+//import spray.json._
+import de.heikoseeberger.akkahttpjackson._
+import org.json4s._
+//import org.json4s.DefaultFormats
+//import org.json4s.jackson.JsonMethods._
+//import org.json4s.jackson.Serialization.write
 
 //import com.typesafe.config.Optional
 import com.typesafe.config._
@@ -57,8 +62,10 @@ object ExchangeApiApp extends App {
   /** Sets up automatic case class to JSON output serialization, required by the JValueResult trait. */
   //protected implicit val jsonFormats: Formats = DefaultFormats
   // implicit val formats = Serialization.formats(NoTypeHints)     // needed for serializing the softwareVersions map to a string (and back)
-  import DefaultJsonProtocol._
-  implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
+  //import DefaultJsonProtocol._
+  //implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
+  import JacksonSupport._
+  private implicit val formats = DefaultFormats
 
   // Set up ActorSystem and other dependencies here
   ExchConfig.load() // get config file, normally in /etc/horizon/exchange/config.json
@@ -79,7 +86,7 @@ object ExchangeApiApp extends App {
     RejectionHandler.newBuilder()
       .handle {
         case r: ExchangeRejection =>
-          complete((r.httpCode, r.toJsonStr))
+          complete((r.httpCode, r.toApiResp))
       }
       .handle {
         case AuthorizationFailedRejection =>
@@ -87,7 +94,11 @@ object ExchangeApiApp extends App {
       }
       .handle {
         case ValidationRejection(msg, _) =>
-          complete((StatusCodes.BadRequest, ApiResponse(ApiResponseType.BAD_INPUT, msg).toJson.toString()))
+          complete((StatusCodes.BadRequest, ApiResponse(ApiRespType.BAD_INPUT, msg)))
+      }
+      .handle {
+        case MalformedRequestContentRejection(msg, _) => // this comes from the entity() directive when parsing the request body failed
+          complete((StatusCodes.BadRequest, ApiResponse(ApiRespType.BAD_INPUT, msg)))
       }
       // the default rejection handler will catch the rest
       //todo: not sure when these will occur
@@ -95,7 +106,7 @@ object ExchangeApiApp extends App {
         val names = methodRejections.map(_.supported.name)
         complete((StatusCodes.MethodNotAllowed, s"method not supported: ${names mkString " or "}"))
       }
-      .handleNotFound { complete((StatusCodes.NotFound, "resource not found")) }
+      .handleNotFound { complete((StatusCodes.NotFound, ApiResponse(ApiRespType.NOT_FOUND, "not found"))) }
       .result()
 
   // Custom logging of requests and responses. See https://doc.akka.io/docs/akka-http/current/routing-dsl/directives/debugging-directives/logRequestResult.html
@@ -117,7 +128,8 @@ object ExchangeApiApp extends App {
   }
 
   // Create all of the routes and concat together
-  def testRoute = { path("test") { get { logger.debug("In /test"); complete("""{"test":"Ok"}""") } } }
+  case class testResp(result: String)
+  def testRoute = { path("test") { get { logger.debug("In /test"); complete(testResp("OK")) } } }
   val orgsRoutes = (new OrgsRoutes).routes
   //val swaggerRoutes = (new SwaggerDocService).routes
   val swaggerDocRoutes = SwaggerDocService.routes

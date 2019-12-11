@@ -10,7 +10,6 @@ import akka.http.scaladsl.server._
 import com.horizon.exchangeapi.tables.{ OrgRow, UserRow }
 import com.osinka.i18n.{ Lang, Messages }
 import com.typesafe.config._
-import org.json4s.JValue
 import slick.jdbc.PostgresProfile.api._
 
 import scala.collection.immutable._
@@ -22,13 +21,16 @@ import com.horizon.exchangeapi.auth.AuthException
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
-import spray.json.DefaultJsonProtocol
-import spray.json._
+//import spray.json.DefaultJsonProtocol
+//import spray.json._
+import org.json4s._
+//import org.json4s.{DefaultFormats, JValue}
+//import org.json4s.jackson.JsonMethods._
+import org.json4s.jackson.Serialization.write
 
-//todo: replace the numbers with StatusCodes values
 /** HTTP codes, taken from https://en.wikipedia.org/wiki/List_of_HTTP_status_codes and https://www.restapitutorial.com/httpstatuscodes.html */
 object HttpCode {
-  val OK = 200
+  /* val OK = 200
   val PUT_OK = 201
   val POST_OK = 201
   val DELETED = 204 // technically means no content, but usually used for DELETE
@@ -41,12 +43,26 @@ object HttpCode {
   val INTERNAL_ERROR = 500
   val NOT_IMPLEMENTED = 501
   val BAD_GW = 502 // bad gateway, which for us means db connection error or jetty refused connection
-  val GW_TIMEOUT = 504 // gateway timeout, which for us means db timeout
+  val GW_TIMEOUT = 504 */ // gateway timeout, which for us means db timeout
+  val OK = StatusCodes.OK
+  val PUT_OK = StatusCodes.Created
+  val POST_OK = StatusCodes.Created
+  val DELETED = StatusCodes.NoContent // technically means no content, but usually used for DELETE
+  val BAD_INPUT = StatusCodes.BadRequest // invalid user input, usually in the params or json body
+  val BADCREDS = StatusCodes.Unauthorized // user/pw or id/token is wrong (they call it unauthorized, but it is really unauthenticated)
+  val ACCESS_DENIED = StatusCodes.Forbidden // do not have authorization to access this resource
+  val ALREADY_EXISTS = StatusCodes.Forbidden // trying to create a resource that already exists. For now using 403 (forbidden), but could also use 409 (conflict)
+  val ALREADY_EXISTS2 = StatusCodes.Conflict // trying to create a resource that already exists (409 means conflict)
+  val NOT_FOUND = StatusCodes.NotFound // resource not found
+  val INTERNAL_ERROR = StatusCodes.InternalServerError
+  val NOT_IMPLEMENTED = StatusCodes.NotImplemented
+  val BAD_GW = StatusCodes.BadGateway // bad gateway, which for us means db connection error or jetty refused connection
+  val GW_TIMEOUT = StatusCodes.GatewayTimeout // gateway timeout, which for us means db timeout
 }
 
 /** These are used as the response structure for most PUTs, POSTs, and DELETEs. */
 case class ApiResponse(code: String, msg: String)
-object ApiResponseType {
+object ApiRespType {
   val BADCREDS = ExchMsg.translate("api.bad.creds")
   val ACCESS_DENIED = ExchMsg.translate("api.access.denied")
   val ALREADY_EXISTS = ExchMsg.translate("api.already.exists")
@@ -65,13 +81,15 @@ object ApiResponseType {
 
 trait ExchangeRejection extends Rejection {
   // Needed so akka can marshal ApiResponse into json to return it to the client
-  import DefaultJsonProtocol._
-  implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
+  //import DefaultJsonProtocol._
+  //implicit val apiRespJsonFormat = jsonFormat2(ApiResponse)
+  private implicit val formats = DefaultFormats
 
   def httpCode: StatusCode
   def apiRespCode: String
   def apiRespMsg: String
-  def toJsonStr = ApiResponse(apiRespCode, apiRespMsg).toJson.toString()
+  def toApiResp = ApiResponse(apiRespCode, apiRespMsg)
+  def toJsonStr = write(ApiResponse(apiRespCode, apiRespMsg))
 }
 
 // Converts an exception into an auth rejection
@@ -92,37 +110,37 @@ final case class AuthRejection(t: Throwable) extends ExchangeRejection {
 
 final case class BadInputRejection(apiRespMsg: String) extends ExchangeRejection {
   def httpCode = StatusCodes.BadRequest
-  def apiRespCode = ApiResponseType.BAD_INPUT
+  def apiRespCode = ApiRespType.BAD_INPUT
 }
 
 final case class AccessDeniedRejection(apiRespMsg: String) extends ExchangeRejection {
   def httpCode = StatusCodes.Forbidden
-  def apiRespCode = ApiResponseType.ACCESS_DENIED
+  def apiRespCode = ApiRespType.ACCESS_DENIED
 }
 
 final case class AlreadyExistsRejection(apiRespMsg: String) extends ExchangeRejection {
   def httpCode = StatusCodes.Forbidden
-  def apiRespCode = ApiResponseType.ALREADY_EXISTS
+  def apiRespCode = ApiRespType.ALREADY_EXISTS
 }
 
 final case class AlreadyExists2Rejection(apiRespMsg: String) extends ExchangeRejection {
   def httpCode = StatusCodes.Conflict
-  def apiRespCode = ApiResponseType.ALREADY_EXISTS
+  def apiRespCode = ApiRespType.ALREADY_EXISTS
 }
 
 final case class NotFoundRejection(apiRespMsg: String) extends ExchangeRejection {
   def httpCode = StatusCodes.NotFound
-  def apiRespCode = ApiResponseType.NOT_FOUND
+  def apiRespCode = ApiRespType.NOT_FOUND
 }
 
 final case class BadGwRejection(apiRespMsg: String) extends ExchangeRejection {
   def httpCode = StatusCodes.BadGateway
-  def apiRespCode = ApiResponseType.BAD_GW
+  def apiRespCode = ApiRespType.BAD_GW
 }
 
 final case class GwTimeoutRejection(apiRespMsg: String) extends ExchangeRejection {
   def httpCode = StatusCodes.GatewayTimeout
-  def apiRespCode = ApiResponseType.GW_TIMEOUT
+  def apiRespCode = ApiRespType.GW_TIMEOUT
 }
 
 // Returns a msg from the translated files, with the args substituted

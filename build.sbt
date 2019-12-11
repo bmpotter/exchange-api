@@ -14,9 +14,13 @@ lazy val root = (project in file(".")).
     // Sbt uses Ivy for dependency resolution, so it supports its version syntax: http://ant.apache.org/ivy/history/latest-milestone/ivyfile/dependency.html#revision
     libraryDependencies ++= Seq(
       "com.typesafe.akka" %% "akka-http"            % akkaHttpVersion,
-      "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
+      //"com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
       "com.typesafe.akka" %% "akka-http-xml"        % akkaHttpVersion,
       "com.typesafe.akka" %% "akka-stream"          % akkaVersion,
+
+      "org.json4s" %% "json4s-native" % "latest.release",
+      "org.json4s" %% "json4s-jackson" % "latest.release",
+      "de.heikoseeberger" %% "akka-http-jackson" % "latest.release",
 
       "javax.ws.rs" % "javax.ws.rs-api" % "2.0.1",  // this is from 8/2014. Version 2.1.1 from 9/2018 gets an error loading
       "com.github.swagger-akka-http" %% "swagger-akka-http" % "latest.release",
@@ -36,8 +40,6 @@ lazy val root = (project in file(".")).
       "ch.qos.logback" % "logback-classic" % "1.2.3",
       "com.mchange" % "c3p0" % "latest.release",
       //"javax.servlet" % "javax.servlet-api" % "latest.release" % "provided",
-      "org.json4s" %% "json4s-native" % "latest.release",
-      "org.json4s" %% "json4s-jackson" % "latest.release",
       "org.scalaj" %% "scalaj-http" % "latest.release",
       "com.typesafe" % "config" % "latest.release",
       "org.mindrot" % "jbcrypt" % "latest.release",

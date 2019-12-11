@@ -251,8 +251,8 @@ object IbmCloudAuth {
               "grant_type" -> "urn:ibm:params:oauth:grant-type:apikey",
               "apikey" -> authInfo.key))
             .asString
-          if (response.code == HttpCode.OK) return Success(parse(response.body).camelizeKeys.extract[IamToken])
-          else if (response.code == HttpCode.BAD_INPUT || response.code == HttpCode.BADCREDS || response.code == HttpCode.ACCESS_DENIED || response.code == HttpCode.NOT_FOUND) {
+          if (response.code == HttpCode.OK.intValue) return Success(parse(response.body).camelizeKeys.extract[IamToken])
+          else if (response.code == HttpCode.BAD_INPUT.intValue || response.code == HttpCode.BADCREDS.intValue || response.code == HttpCode.ACCESS_DENIED.intValue || response.code == HttpCode.NOT_FOUND.intValue) {
             // This IAM API returns BAD_INPUT (400) when the mechanics of the api call were successful, but the api key was invalid
             return Failure(new IamApiErrorException(response.body.toString))
           } else delayedReturn = Failure(new IamApiErrorException(response.body.toString))
@@ -283,7 +283,7 @@ object IbmCloudAuth {
             .postData("apikey=" + apiKey)
             .asString
           logger.debug(iamUrl + " http code: " + response.code + ", body: " + response.body)
-          if (response.code == HttpCode.OK) {
+          if (response.code == HttpCode.OK.intValue) {
             // This api returns 200 even for an invalid api key. Have to determine its validity via the 'active' field
             val userInfo = parse(response.body).extract[IamUserInfo]
             if (userInfo.isActive && userInfo.user != "") return Success(userInfo)
@@ -307,8 +307,8 @@ object IbmCloudAuth {
             .header("Content-Type", "application/json")
             .asString
           logger.debug(iamUrl + " http code: " + response.code + ", body: " + response.body)
-          if (response.code == HttpCode.OK) return Success(parse(response.body).extract[IamUserInfo])
-          else if (response.code == HttpCode.BAD_INPUT || response.code == HttpCode.BADCREDS || response.code == HttpCode.ACCESS_DENIED || response.code == HttpCode.NOT_FOUND) {
+          if (response.code == HttpCode.OK.intValue) return Success(parse(response.body).extract[IamUserInfo])
+          else if (response.code == HttpCode.BAD_INPUT.intValue || response.code == HttpCode.BADCREDS.intValue || response.code == HttpCode.ACCESS_DENIED.intValue || response.code == HttpCode.NOT_FOUND.intValue) {
             // This IAM API returns BAD_INPUT (400) when the mechanics of the api call were successful, but the token was invalid
             return Failure(new IamApiErrorException(response.body.toString))
           } else delayedReturn = Failure(new IamApiErrorException(response.body.toString))
@@ -329,7 +329,7 @@ object IbmCloudAuth {
             .header("Content-Type", "application/json")
             .asString
           logger.debug(iamUrl + " http code: " + response.code + ", body: " + response.body)
-          if (response.code == HttpCode.OK) {
+          if (response.code == HttpCode.OK.intValue) {
             // This api returns 200 even for an invalid token. Have to determine its validity via the 'active' field
             val userInfo = parse(response.body).extract[IamUserInfo]
             if (userInfo.isActive && userInfo.user != "") return Success(userInfo)
@@ -424,7 +424,7 @@ object IbmCloudAuth {
             val response = Http(iamUrl).method("get").option(HttpOptions.sslSocketFactory(this.sslSocketFactory))
               .header("Authorization", s"bearer ${token.accessToken}") // Note: bearer MUST be lowercase for this rest api!!!
               .asString */
-            if (response.code == HttpCode.OK) {
+            if (response.code == HttpCode.OK.intValue) {
               val resp = parse(response.body).extract[ClusterConfigResponse]
               val tokenOrg = resp.cluster_name
               //val resp = parse(response.body).extract[List[TokenAccountResponse]]
@@ -432,7 +432,7 @@ object IbmCloudAuth {
               logger.debug("Org of ICP creds: " + tokenOrg + ", org of request: " + authInfo.org)
               // no longer need to test org for ICP
               return DBIO.successful(authInfo.org)
-            } else if (response.code == HttpCode.BAD_INPUT || response.code == HttpCode.BADCREDS || response.code == HttpCode.ACCESS_DENIED || response.code == HttpCode.NOT_FOUND) {
+            } else if (response.code == HttpCode.BAD_INPUT.intValue || response.code == HttpCode.BADCREDS.intValue || response.code == HttpCode.ACCESS_DENIED.intValue || response.code == HttpCode.NOT_FOUND.intValue) {
               // This IAM API returns ACCESS_DENIED (403) when the mechanics of the api call were successful, but the token was invalid
               return DBIO.failed(new IamApiErrorException(response.body.toString))
             } else {

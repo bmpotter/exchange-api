@@ -41,7 +41,7 @@ class AdminSuite extends FunSuite {
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK)
     val postResp = parse(response.body).extract[ApiResponse]
-    assert(postResp.code === ApiResponseType.OK)
+    assert(postResp.code === ApiRespType.OK)
   }
 
   /** Hash a pw */
@@ -61,7 +61,7 @@ class AdminSuite extends FunSuite {
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.POST_OK)
     val postResp = parse(response.body).extract[ApiResponse]
-    assert(postResp.code === ApiResponseType.OK)
+    assert(postResp.code === ApiRespType.OK)
   }
 
   /** Set invalid log level */
@@ -71,7 +71,7 @@ class AdminSuite extends FunSuite {
     info("code: "+response.code+", response.body: "+response.body)
     assert(response.code === HttpCode.BAD_INPUT)
     val postResp = parse(response.body).extract[ApiResponse]
-    assert(postResp.code === ApiResponseType.BAD_INPUT)
+    assert(postResp.code === ApiRespType.BAD_INPUT)
   }
 
   test("GET /admin/status") {
