@@ -85,7 +85,7 @@ export EXCHANGE_IAM_EMAIL=myaccountemail@something.com
 export EXCHANGE_IAM_ACCOUNT=myibmcloudaccountid
 ```
 - Run the automated tests in a second shell (with the exchange server still running in the first): `sbt test`
-- Run just 1 of the the automated test suites (with the exchange server still running): `sbt "testOnly exchangeapi.AgbotsSuite"`
+- Run just 1 of the the automated test suites (with the exchange server still running): `sbt "testOnly **.AgbotsSuite"`
 - Run the performance tests: `src/test/bash/scale/test.sh` or `src/test/bash/scale/wrapper.sh 8`
 - Make sure to run `primedb.sh` before running the  `AgbotsSuite` test class to run all of the tests.
 

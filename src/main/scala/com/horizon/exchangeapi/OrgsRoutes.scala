@@ -286,10 +286,11 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
       new responses.ApiResponse(responseCode = "404", description = "not found")))
   def orgPutRoute: Route = (put & path("orgs" / Segment) & extractCredentials) { (orgId, creds) =>
     logger.debug(s"Doing PUT /orgs/$orgId with orgId:$orgId")
-    auth(creds, TOrg(orgId), Access.WRITE) match {
-      case Failure(t) => reject(AuthRejection(t))
-      case Success(_) =>
-        entity(as[PostPutOrgRequest]) { orgReq =>
+    entity(as[PostPutOrgRequest]) { orgReq =>
+      val access = if (orgReq.orgType.getOrElse("") == "IBM") Access.SET_IBM_ORG_TYPE else Access.WRITE
+      auth(creds, TOrg(orgId), access) match {
+        case Failure(t) => reject(AuthRejection(t))
+        case Success(_) =>
           validate(orgReq.getAnyProblem.isEmpty, "Problem in request body") { //todo: create a custom validation directive so we can return the specific error msg from getAnyProblem to the client
             complete({
               db.run(orgReq.toOrgRow(orgId).update.asTry).map({ xs =>
@@ -304,8 +305,8 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
               })
             }) // end of complete
           } // end of validate
-        } // end of entity
-    } // end of auth match
+      } // end of auth match
+    } // end of entity
   }
 
   // ====== PATCH /orgs/{orgid} ================================

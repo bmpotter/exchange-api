@@ -306,7 +306,7 @@ class UsersRoutes(implicit val system: ActorSystem) extends JacksonSupport with 
   def userDeleteRoute: Route = (delete & path("orgs" / Segment / "users" / Segment) & extractCredentials) { (orgid, username, creds) =>
     logger.debug(s"Doing DELETE /orgs/$orgid/users/$username")
     val compositeId = OrgAndId(orgid, username).toString
-    auth(creds, TOrg(compositeId), Access.WRITE) match {
+    auth(creds, TUser(compositeId), Access.WRITE) match {
       case Failure(t) => reject(AuthRejection(t))
       case Success(_) =>
         complete({
@@ -342,7 +342,7 @@ class UsersRoutes(implicit val system: ActorSystem) extends JacksonSupport with 
   def userConfirmRoute: Route = (post & path("orgs" / Segment / "users" / Segment / "confirm") & extractCredentials) { (orgid, username, creds) =>
     logger.debug(s"Doing POST /orgs/$orgid/users/$username/confirm")
     val compositeId = OrgAndId(orgid, username).toString
-    auth(creds, TOrg(compositeId), Access.READ) match {
+    auth(creds, TUser(compositeId), Access.READ) match {
       case Failure(t) => reject(AuthRejection(t))
       case Success(_) =>
         complete({
