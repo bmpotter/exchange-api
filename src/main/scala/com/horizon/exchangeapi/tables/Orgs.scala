@@ -79,6 +79,5 @@ object OrgsTQ {
 }
 
 // This is the org table minus the key - used as the data structure to return to the REST clients
-//todo: can this be a final case class?
 final case class Org(orgType: String, label: String, description: String, lastUpdated: String, tags: Option[Map[String, String]])
 

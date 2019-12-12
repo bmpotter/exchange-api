@@ -4,7 +4,7 @@ package com.horizon.exchangeapi
 //import akka.stream.ActorMaterializer
 import akka.http.scaladsl.server.Directives
 import com.github.swagger.akka.SwaggerHttpService
-import com.github.swagger.akka.model.Info
+import com.github.swagger.akka.model.{ Info, License }
 import io.swagger.v3.oas.models.ExternalDocumentation
 
 /*Swagger references:
@@ -18,10 +18,16 @@ import io.swagger.v3.oas.models.ExternalDocumentation
 object SwaggerDocService extends SwaggerHttpService {
   //override implicit val actorSystem: ActorSystem = system
   //override implicit val materializer: ActorMaterializer = ActorMaterializer()
-  override def apiClasses = Set(classOf[OrgsRoutes])
+  override def apiClasses = Set(classOf[OrgsRoutes], classOf[UsersRoutes])
   override def host = s"${ExchangeApiConstants.serviceHost}:${ExchangeApiConstants.servicePort}" //the url of your api, not swagger's json endpoint
   override def apiDocsPath = "api-docs" //where you want the swagger-json endpoint exposed
-  override def info = Info(version = "1.0") //provides license and other description details
+
+  override def info = Info(
+    description = "<b>Note:</b> the <b>Try it out</b> button is not supported. Instead, test the API with curl:<br><br><code>curl -sS -u &lt;org&gt;/iamapikey:&lt;key&gt; https://&lt;host&gt;:&lt;port&gt;/ec-exchange/v1/orgs/... | jq</code>",
+    version = "1.0",
+    title = "Exchange API",
+    license = Some(License("Apache License Version 2.0", "https://www.apache.org/licenses/LICENSE-2.0")))
+
   override def externalDocs = Some(new ExternalDocumentation().description("Open-horizon ExchangeAPI").url("https://github.com/open-horizon/exchange-api"))
   //override val securitySchemeDefinitions = Map("basicAuth" -> new BasicAuthDefinition())
   override def unwantedDefinitions = Seq("Function1", "Function1RequestContextFutureRouteResult")

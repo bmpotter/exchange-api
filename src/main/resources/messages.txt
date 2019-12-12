@@ -290,6 +290,7 @@ user.added.or.updated.successfully={0} user added or updated successfully
 user.not.added.or.updated.successfully=user not added or updated: {0}
 non.admin.user.cannot.make.admin.user=a user without admin privilege can not give admin privilege
 user.updated.successfully=user updated successfully
+user.not.updated=user not updated: {0}
 user.not.found=user ''{0}'' not found
 no.valid.agbot.attr.specified=no valid agbot attribute specified
 user.attr.updated=attribute ''{0}'' of user ''{1}'' updated

@@ -46,17 +46,17 @@ import scala.concurrent.ExecutionContext
 
 /** Output format for GET /orgs */
 final case class GetOrgsResponse(orgs: Map[String, Org], lastIndex: Int)
-case class GetOrgAttributeResponse(attribute: String, value: String)
+final case class GetOrgAttributeResponse(attribute: String, value: String)
 
 /** Input format for PUT /orgs/<org-id> */
-case class PostPutOrgRequest(orgType: Option[String], label: String, description: String, tags: Option[Map[String, String]]) {
+final case class PostPutOrgRequest(orgType: Option[String], label: String, description: String, tags: Option[Map[String, String]]) {
   protected implicit val jsonFormats: Formats = DefaultFormats
-  def getAnyProblem: Option[String] = None // None mean no problems with input
+  def getAnyProblem: Option[String] = None // None means no problems with input
 
   def toOrgRow(orgId: String) = OrgRow(orgId, orgType.getOrElse(""), label, description, ApiTime.nowUTC, tags.map(ts => ApiUtil.asJValue(ts)))
 }
 
-case class PatchOrgRequest(orgType: Option[String], label: Option[String], description: Option[String], tags: Option[Map[String, Option[String]]]) {
+final case class PatchOrgRequest(orgType: Option[String], label: Option[String], description: Option[String], tags: Option[Map[String, Option[String]]]) {
   protected implicit val jsonFormats: Formats = DefaultFormats
 
   /** Returns a tuple of the db action to update parts of the org, and the attribute name being updated. */
@@ -119,7 +119,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
 
   // Note: to make swagger work, each route should be returned by its own method: https://github.com/swagger-akka-http/swagger-akka-http
   // Note: putting the orgs prefix here, because it might help performance by disqualifying all of these routes early
-  def routes: Route = pathPrefix("orgs") { orgsGetRoute ~ orgGetRoute ~ orgPostRoute ~ orgPutRoute ~ orgPatchRoute ~ orgDeleteRoute }
+  def routes: Route = orgsGetRoute ~ orgGetRoute ~ orgPostRoute ~ orgPutRoute ~ orgPatchRoute ~ orgDeleteRoute
 
   // ====== GET /orgs ================================
 
@@ -137,7 +137,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
   // Note: i think these annotations can't have any comments between them and the method def
   @GET
   @Path("")
-  @Operation(summary = "Returns all orgs", description = """Returns some or all org definitions in the exchange DB. Can be run by any user if filter orgType=IBM is used, otherwise can only be run by the root user.""",
+  @Operation(summary = "Returns all orgs", description = """Returns some or all org definitions. Can be run by any user if filter orgType=IBM is used, otherwise can only be run by the root user.""",
     parameters = Array(
       new Parameter(name = "orgtype", in = ParameterIn.QUERY, required = false, description = "Filter results to only include orgs with this org type. A common org type is 'IBM'.",
         content = Array(new Content(schema = new Schema(implementation = classOf[String], allowableValues = Array("IBM"))))),
@@ -148,7 +148,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgsGetRoute: Route = (get & pathEnd & parameter(('orgtype.?, 'label.?)) & extractCredentials) { (orgType, label, creds) =>
+  def orgsGetRoute: Route = (get & path("orgs") & parameter(('orgtype.?, 'label.?)) & extractCredentials) { (orgType, label, creds) =>
     logger.debug(s"Doing GET /orgs with creds:$creds, orgType:$orgType, label:$label")
     // If filter is orgType=IBM then it is a different access required than reading all orgs
     val access = if (orgType.getOrElse("").contains("IBM")) Access.READ_IBM_ORGS else Access.READ_OTHER_ORGS
@@ -183,7 +183,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
   // ====== GET /orgs/{orgid} ================================
   @GET
   @Path("{orgid}")
-  @Operation(summary = "Returns an org", description = """Returns the org with the specified id in the exchange DB. Can be run by any user in this org.""",
+  @Operation(summary = "Returns an org", description = """Returns the org with the specified id. Can be run by any user in this org.""",
     parameters = Array(
       new Parameter(name = "orgid", in = ParameterIn.PATH, description = "Organization id."),
       new Parameter(name = "attribute", in = ParameterIn.QUERY, required = false, description = "Which attribute value should be returned. Only 1 attribute can be specified. If not specified, the entire org resource will be returned.")),
@@ -193,7 +193,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgGetRoute: Route = (get & path(Segment) & parameter('attribute.?) & extractCredentials) { (orgId, attribute, creds) =>
+  def orgGetRoute: Route = (get & path("orgs" / Segment) & parameter('attribute.?) & extractCredentials) { (orgId, attribute, creds) =>
     auth(creds, TOrg(orgId), Access.READ) match {
       case Failure(t) => reject(AuthRejection(t))
       case Success(_) =>
@@ -233,10 +233,10 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
     requestBody = new RequestBody(description = """
 ```
 {
-"orgType": "my org type",
-"label": "My org",
-"description": "blah blah",
-"tags": { "ibmcloud_id": "abc123def456" }
+  "orgType": "my org type",
+  "label": "My org",
+  "description": "blah blah",
+  "tags": { "ibmcloud_id": "abc123def456" }
 }
 ```""", required = true, content = Array(new Content(schema = new Schema(implementation = classOf[PostPutOrgRequest])))),
     responses = Array(
@@ -246,8 +246,8 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPostRoute: Route = (post & path(Segment) & extractCredentials) { (orgId, creds) =>
-    logger.debug(s"Doing POST /orgs/$orgId with orgId:$orgId")
+  def orgPostRoute: Route = (post & path("orgs" / Segment) & extractCredentials) { (orgId, creds) =>
+    logger.debug(s"Doing POST /orgs/$orgId")
     auth(creds, TOrg(""), Access.CREATE) match {
       case Failure(t) => reject(AuthRejection(t))
       case Success(_) =>
@@ -257,7 +257,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
               db.run(orgReq.toOrgRow(orgId).insert.asTry).map({ xs =>
                 logger.debug(s"POST /orgs/$orgId result: " + xs.toString)
                 xs match {
-                  case Success(_) => (HttpCode.OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("org.created", orgId)))
+                  case Success(_) => (HttpCode.POST_OK, ApiResponse(ApiRespType.OK, ExchMsg.translate("org.created", orgId)))
                   case Failure(t) =>
                     if (t.getMessage.startsWith("Access Denied:")) (HttpCode.ACCESS_DENIED, ApiResponse(ApiRespType.ACCESS_DENIED, ExchMsg.translate("org.not.created", orgId, t.getMessage)))
                     else if (t.getMessage.contains("duplicate key value violates unique constraint")) (HttpCode.ALREADY_EXISTS, ApiResponse(ApiRespType.ALREADY_EXISTS, ExchMsg.translate("org.already.exists", orgId, t.getMessage)))
@@ -276,7 +276,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
   @Operation(summary = "Updates an org", description = """Does a full replace of an existing org. This can only be called by root or a user in the org with the admin role.""",
     parameters = Array(
       new Parameter(name = "orgid", in = ParameterIn.PATH, description = "Organization id.")),
-    requestBody = new RequestBody(description = """See details in the POST route.""", required = true, content = Array(new Content(schema = new Schema(implementation = classOf[PostPutOrgRequest])))),
+    requestBody = new RequestBody(description = "See details in the POST route.", required = true, content = Array(new Content(schema = new Schema(implementation = classOf[PostPutOrgRequest])))),
     responses = Array(
       new responses.ApiResponse(responseCode = "200", description = "resource updated - response body:",
         content = Array(new Content(schema = new Schema(implementation = classOf[ApiResponse])))),
@@ -284,7 +284,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPutRoute: Route = (put & path(Segment) & extractCredentials) { (orgId, creds) =>
+  def orgPutRoute: Route = (put & path("orgs" / Segment) & extractCredentials) { (orgId, creds) =>
     logger.debug(s"Doing PUT /orgs/$orgId with orgId:$orgId")
     auth(creds, TOrg(orgId), Access.WRITE) match {
       case Failure(t) => reject(AuthRejection(t))
@@ -311,7 +311,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
   // ====== PATCH /orgs/{orgid} ================================
   @PATCH
   @Path("{orgid}")
-  @Operation(summary = "Updates 1 attribute of an org", description = """Updates one attribute of a org in the exchange DB. This can only be called by root or a user in the org with the admin role.""",
+  @Operation(summary = "Updates 1 attribute of an org", description = """Updates one attribute of a org. This can only be called by root or a user in the org with the admin role.""",
     parameters = Array(
       new Parameter(name = "orgid", in = ParameterIn.PATH, description = "Organization id.")),
     requestBody = new RequestBody(description = "Specify only **one** of the attributes:", required = true, content = Array(new Content(schema = new Schema(implementation = classOf[PatchOrgRequest])))),
@@ -322,7 +322,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgPatchRoute: Route = (patch & path(Segment) & extractCredentials) { (orgId, creds) =>
+  def orgPatchRoute: Route = (patch & path("orgs" / Segment) & extractCredentials) { (orgId, creds) =>
     logger.debug(s"Doing PATCH /orgs/$orgId with orgId:$orgId")
     entity(as[PatchOrgRequest]) { orgReq =>
       val access = if (orgReq.orgType.getOrElse("") == "IBM") Access.SET_IBM_ORG_TYPE else Access.WRITE
@@ -350,7 +350,7 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
   // =========== DELETE /orgs/{org} ===============================
   @DELETE
   @Path("{orgid}")
-  @Operation(summary = "Deletes an org", description = """Deletes an org from the exchange DB. This can only be called by root or a user in the org with the admin role.""",
+  @Operation(summary = "Deletes an org", description = """Deletes an org. This can only be called by root or a user in the org with the admin role.""",
     parameters = Array(
       new Parameter(name = "orgid", in = ParameterIn.PATH, description = "Organization id.")),
     responses = Array(
@@ -358,8 +358,8 @@ class OrgsRoutes(implicit val system: ActorSystem) extends JacksonSupport /* Spr
       new responses.ApiResponse(responseCode = "401", description = "invalid credentials"),
       new responses.ApiResponse(responseCode = "403", description = "access denied"),
       new responses.ApiResponse(responseCode = "404", description = "not found")))
-  def orgDeleteRoute: Route = (delete & path(Segment) & extractCredentials) { (orgId, creds) =>
-    logger.debug(s"Doing DELETE /orgs/$orgId with orgId:$orgId")
+  def orgDeleteRoute: Route = (delete & path("orgs" / Segment) & extractCredentials) { (orgId, creds) =>
+    logger.debug(s"Doing DELETE /orgs/$orgId")
     auth(creds, TOrg(orgId), Access.WRITE) match {
       case Failure(t) => reject(AuthRejection(t))
       case Success(_) =>

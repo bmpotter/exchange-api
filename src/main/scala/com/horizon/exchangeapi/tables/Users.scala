@@ -12,6 +12,7 @@ case class UserRow(username: String, orgid: String, hashedPw: String, admin: Boo
     UsersTQ.rows += UserRow(username, orgid, hashedPw, admin, email, lastUpdated, updatedBy)
   }
 
+  //todo: no longer used
   def upsertUser: DBIO[_] = {
     //val pw = if (password == "") "" else if (Password.isHashed(password)) password else Password.hash(password)
     UsersTQ.rows.insertOrUpdate(UserRow(username, orgid, hashedPw, admin, email, lastUpdated, updatedBy))
