@@ -3,6 +3,7 @@ package com.horizon.exchangeapi
 import akka.event.LoggingAdapter
 import akka.http.scaladsl.model.headers.HttpCredentials
 import com.horizon.exchangeapi.Access.Access
+import javax.security.auth.login.{ AppConfigurationEntry, Configuration }
 
 import scala.util.matching.Regex
 //import akka.http.scaladsl.server.{Directive, Directive1}
@@ -18,6 +19,7 @@ import slick.jdbc.PostgresProfile.api._
 import scala.collection.JavaConverters._
 import scala.util._
 import java.util.Base64
+import java.util
 
 /* Used by all routes classes to Authenticates the client credentials and then checks the ACLs for authorization.
 The main authenticate/authorization flow is:
@@ -46,6 +48,22 @@ object AuthenticationSupport {
       }
     } catch {
       case _: IllegalArgumentException => None // this is the exception from decode()
+    }
+  }
+
+  /* Used in the LoginContext in authenticate()
+    Note: the login config was originally loaded at runtime from src/main/resources/jaas.config with this content:
+      ExchangeApiLogin {
+       com.horizon.exchangeapi.auth.IbmCloudModule sufficient;
+       com.horizon.exchangeapi.auth.Module sufficient;
+      };
+    But i had trouble getting it loaded from the docker image that the sbt-native-packager builds. So just putting the config in our code for now.
+  */
+  val loginConfig = new Configuration {
+    override def getAppConfigurationEntry(name: String) = {
+      Array[AppConfigurationEntry](
+        new AppConfigurationEntry("com.horizon.exchangeapi.auth.IbmCloudModule", AppConfigurationEntry.LoginModuleControlFlag.SUFFICIENT, new util.HashMap[String, String]()),
+        new AppConfigurationEntry("com.horizon.exchangeapi.auth.Module", AppConfigurationEntry.LoginModuleControlFlag.SUFFICIENT, new util.HashMap[String, String]()))
     }
   }
 }
@@ -112,8 +130,9 @@ trait AuthenticationSupport extends AuthorizationSupport {
     //logger.debug(s"authenticate: $creds")
     if (creds.isEmpty) return Failure(new InvalidCredentialsException)
     val loginCtx = new LoginContext(
-      "ExchangeApiLogin", // this is referencing a stanza in resources/jaas.config
-      new ExchCallbackHandler(RequestInfo(creds.get, /*request, params,*/ isDbMigration /*, anonymousOk*/ , hint)))
+      "ExchangeApiLogin", null,
+      new ExchCallbackHandler(RequestInfo(creds.get, /*request, params,*/ isDbMigration /*, anonymousOk*/ , hint)),
+      AuthenticationSupport.loginConfig)
     for (err <- Try(loginCtx.login()).failed) {
       return Failure(err)
     }

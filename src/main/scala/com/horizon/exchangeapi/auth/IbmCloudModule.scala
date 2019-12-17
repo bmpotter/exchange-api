@@ -192,43 +192,54 @@ object IbmCloudAuth {
     removeAll().map(_ => ())
   }
 
+  // Note: we need these 2 methods because if the env var is set to "", sys.env.get() will return Some("") instead of None
+  private def isEnvSet(envVarName: String) = sys.env.get(envVarName) match {
+    case Some(v) => v != ""
+    case None => false
+  }
+  private def getEnv(envVarName: String, defaultVal: String) = sys.env.get(envVarName) match {
+    case Some(v) => if (v == "") defaultVal else v
+    case None => defaultVal
+  }
+
   private def isIcp = {
     // ICP kube automatically sets the 1st one, our development environment sets the 2nd one when locally testing
-    sys.env.get("PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT").nonEmpty || sys.env.get("ICP_EXTERNAL_MGMT_INGRESS").nonEmpty
+    logger.debug("isIcp: ICP_EXTERNAL_MGMT_INGRESS: " + sys.env.get("ICP_EXTERNAL_MGMT_INGRESS"))
+    isEnvSet("PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT") || isEnvSet("ICP_EXTERNAL_MGMT_INGRESS")
   }
 
   private def getIcpIdentityProviderUrl = {
     // https://$ICP_EXTERNAL_MGMT_INGRESS/idprovider  or  https://platform-identity-provider:$PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT
-    if (sys.env.get("ICP_EXTERNAL_MGMT_INGRESS").nonEmpty) {
-      val ICP_EXTERNAL_MGMT_INGRESS = sys.env.getOrElse("ICP_EXTERNAL_MGMT_INGRESS", "")
+    if (isEnvSet("ICP_EXTERNAL_MGMT_INGRESS")) {
+      val ICP_EXTERNAL_MGMT_INGRESS = getEnv("ICP_EXTERNAL_MGMT_INGRESS", "")
       s"https://$ICP_EXTERNAL_MGMT_INGRESS/idprovider"
     } else {
       // ICP kube automatically sets this env var and hostname
-      val PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT = sys.env.getOrElse("PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT", "4300")
+      val PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT = getEnv("PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT", "4300")
       s"https://platform-identity-provider:$PLATFORM_IDENTITY_PROVIDER_SERVICE_PORT"
     }
   }
 
   /* private def getIcpIdentityMgmtUrl = {
     // https://$ICP_EXTERNAL_MGMT_INGRESS/idmgmt  or  https://platform-identity-management:$PLATFORM_IDENTITY_MANAGEMENT_SERVICE_PORT
-    if (sys.env.get("ICP_EXTERNAL_MGMT_INGRESS").nonEmpty) {
-      val ICP_EXTERNAL_MGMT_INGRESS = sys.env.getOrElse("ICP_EXTERNAL_MGMT_INGRESS", "")
+    if (isEnvSet("ICP_EXTERNAL_MGMT_INGRESS")) {
+      val ICP_EXTERNAL_MGMT_INGRESS = getEnv("ICP_EXTERNAL_MGMT_INGRESS", "")
       s"https://$ICP_EXTERNAL_MGMT_INGRESS/idmgmt"
     } else {
       // ICP kube automatically sets this env var and hostname
-      val PLATFORM_IDENTITY_MANAGEMENT_SERVICE_PORT = sys.env.getOrElse("PLATFORM_IDENTITY_MANAGEMENT_SERVICE_PORT", "4500")
+      val PLATFORM_IDENTITY_MANAGEMENT_SERVICE_PORT = getEnv("PLATFORM_IDENTITY_MANAGEMENT_SERVICE_PORT", "4500")
       s"https://platform-identity-management:$PLATFORM_IDENTITY_MANAGEMENT_SERVICE_PORT"
     }
   } */
 
   private def getIcpMgmtIngressUrl = {
     // https://$ICP_EXTERNAL_MGMT_INGRESS  or  https://icp-management-ingress.kube-system:$ICP_MANAGEMENT_INGRESS_SERVICE_PORT
-    if (sys.env.get("ICP_EXTERNAL_MGMT_INGRESS").nonEmpty) {
-      val ICP_EXTERNAL_MGMT_INGRESS = sys.env.getOrElse("ICP_EXTERNAL_MGMT_INGRESS", "")
+    if (isEnvSet("ICP_EXTERNAL_MGMT_INGRESS")) {
+      val ICP_EXTERNAL_MGMT_INGRESS = getEnv("ICP_EXTERNAL_MGMT_INGRESS", "")
       s"https://$ICP_EXTERNAL_MGMT_INGRESS"
     } else {
       // ICP kube automatically sets this env var and hostname
-      val ICP_MANAGEMENT_INGRESS_SERVICE_PORT = sys.env.getOrElse("ICP_MANAGEMENT_INGRESS_SERVICE_PORT", "8443")
+      val ICP_MANAGEMENT_INGRESS_SERVICE_PORT = getEnv("ICP_MANAGEMENT_INGRESS_SERVICE_PORT", "8443")
       s"https://icp-management-ingress.kube-system:$ICP_MANAGEMENT_INGRESS_SERVICE_PORT"
     }
   }

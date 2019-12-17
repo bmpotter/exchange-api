@@ -16,7 +16,7 @@ import scala.collection.immutable._
 import scala.util._
 import java.util.Properties
 
-import ch.qos.logback.classic.Level
+//import ch.qos.logback.classic.Level
 import com.horizon.exchangeapi.auth.AuthException
 
 import scala.collection.JavaConverters._
@@ -150,6 +150,15 @@ object ExchMsg {
   }
 }
 
+object LogLevel {
+  val OFF = "OFF"
+  val ERROR = "ERROR"
+  val WARN = "WARN"
+  val INFO = "INFO"
+  val DEBUG = "DEBUG"
+  val validLevels = Set(OFF, ERROR, WARN, INFO, DEBUG)
+}
+
 /** Global config parameters for the exchange. See typesafe config classes: http://typesafehub.github.io/config/latest/api/ */
 object ExchConfig {
   val configResourceName = "config.json"
@@ -161,8 +170,6 @@ object ExchConfig {
   var defaultLogger: LoggingAdapter = _ // this gets set early by ExchangeApiApp
   def logger = defaultLogger
 
-  // Maps log levels expressed as strings in the config file to the slf4j log level enums
-  val levels: Map[String, Level] = Map("OFF" -> Level.OFF, "ERROR" -> Level.ERROR, "WARN" -> Level.WARN, "INFO" -> Level.INFO, "DEBUG" -> Level.DEBUG /* , "TRACE" -> Level.TRACE, "ALL" -> Level.ALL */ )
   var rootHashedPw = "" // so we can remember the hashed pw between load() and createRoot()
 
   // Tries to load the user's external config file
@@ -192,14 +199,11 @@ object ExchConfig {
 
   def getLogLevel = {
     val loglev = config.getString("api.logging.level")
-    if (loglev == "") Level.INFO.toString
+    if (loglev == "") LogLevel.INFO // default
+    else if (LogLevel.validLevels.contains(loglev)) loglev
     else {
-      levels.get(loglev) match {
-        case Some(level) => level.toString
-        case None =>
-          println("Invalid logging level '" + loglev + "' specified in config.json. Continuing with the default logging level " + Level.INFO + ".")
-          Level.INFO.toString
-      }
+      println("Invalid logging level '" + loglev + "' specified in config.json. Continuing with the default logging level " + LogLevel.INFO + ".")
+      LogLevel.INFO // fallback
     }
   }
 
@@ -446,4 +450,11 @@ object ApiUtil {
 
     Extraction.decompose(src)
   }
+
+  /* This apparently ony works when run from a war file, not straight from sbt. Get our version from build.sbt
+  def getAppVersion = {
+    val p = getClass.getPackage
+    p.getImplementationVersion
+  }
+  */
 }

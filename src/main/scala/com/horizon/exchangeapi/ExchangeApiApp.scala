@@ -40,7 +40,8 @@ import org.json4s._
 import com.typesafe.config._
 
 object ExchangeApiConstants {
-  val serviceHost = "localhost"
+  //val serviceHost = "localhost"
+  val serviceHost = "0.0.0.0"
   val servicePort = 8080
 }
 

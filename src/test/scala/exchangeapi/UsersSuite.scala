@@ -75,10 +75,10 @@ class UsersSuite extends FunSuite {
   val agbotId = "a1"
   val agbotToken = agbotId + "tok"
   val iamKey = sys.env.getOrElse("EXCHANGE_IAM_KEY", "")
-  val iamEmail = sys.env.getOrElse("EXCHANGE_IAM_EMAIL", "")
-  val iamAccount = sys.env.getOrElse("EXCHANGE_IAM_ACCOUNT_ID", "")
+  val iamUser = sys.env.getOrElse("EXCHANGE_IAM_EMAIL", "")
+  val iamAccountId = sys.env.getOrElse("EXCHANGE_IAM_ACCOUNT_ID", "") // this indicates it is ibm cloud instead of ICP
   val iamOtherKey = sys.env.getOrElse("EXCHANGE_IAM_OTHER_KEY", "")
-  val iamOtherAccount = sys.env.getOrElse("EXCHANGE_IAM_OTHER_ACCOUNT_ID", "")
+  val iamOtherAccountId = sys.env.getOrElse("EXCHANGE_IAM_OTHER_ACCOUNT_ID", "")
   val IAMAUTH = { org: String => ("Authorization", "Basic " + encode(s"$org/iamapikey:$iamKey")) }
   val IAMOTHERAUTH = { org: String => ("Authorization", "Basic " + encode(s"$org/iamapikey:$iamOtherKey")) }
 
@@ -750,16 +750,18 @@ class UsersSuite extends FunSuite {
   test("IAM login") {
     // these tests will perform authentication with IBM cloud and will only run
     // if the IAM info is provided in the env vars EXCHANGE_IAM_KEY, EXCHANGE_IAM_EMAIL, and EXCHANGE_IAM_ACCOUNT_ID
-    if (!iamKey.isEmpty && !iamEmail.isEmpty && !iamAccount.isEmpty && !iamOtherKey.isEmpty && !iamOtherAccount.isEmpty) {
-      // add ibmcloud_id to org
-      var tagInput = s"""{ "tags": {"ibmcloud_id": "$iamAccount"} }"""
-      var response = Http(URL).postData(tagInput).method("patch").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
-      info("code: " + response.code + ", response.body: " + response.body)
-      assert(response.code === HttpCode.PUT_OK.intValue)
+    if (!iamKey.isEmpty && !iamUser.isEmpty) {
+      if (!iamAccountId.isEmpty) {
+        // Add ibmcloud_id to org. Not needed for ICP
+        val tagInput = s"""{ "tags": {"ibmcloud_id": "$iamAccountId"} }"""
+        val response = Http(URL).postData(tagInput).method("patch").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+        info("code: " + response.code + ", response.body: " + response.body)
+        assert(response.code === HttpCode.PUT_OK.intValue)
+      }
 
       // authenticate as a cloud user and view org (action they are authorized for)
       info("authenticating to ibm cloud with " + IAMAUTH(orgid) + " and GETing " + URL)
-      response = Http(URL).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
+      var response = Http(URL).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
       info("GET " + URL + " code: " + response.code)
       assert(response.code === HttpCode.OK.intValue)
 
@@ -770,14 +772,14 @@ class UsersSuite extends FunSuite {
 
       // authenticate as a cloud user and view this user
       //response = Http(URL+"/users/"+iamEmail).headers(ACCEPT).headers(ROOTAUTH).asString
-      response = Http(URL + "/users/" + iamEmail).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
+      response = Http(URL + "/users/" + iamUser).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
       info("code: " + response.code + ", response.body: " + response.body)
       assert(response.code === HttpCode.OK.intValue)
       var getUserResp = parse(response.body).extract[GetUsersResponse]
       assert(getUserResp.users.size === 1)
-      assert(getUserResp.users.contains(orgid + "/" + iamEmail))
-      var u = getUserResp.users(orgid + "/" + iamEmail)
-      assert(u.email === iamEmail)
+      assert(getUserResp.users.contains(orgid + "/" + iamUser))
+      var u = getUserResp.users(orgid + "/" + iamUser)
+      assert(u.email === iamUser)
 
       // run special case of authenticate as a cloud user and view your own user
       response = Http(URL + "/users/iamapikey").headers(ACCEPT).headers(IAMAUTH(orgid)).asString
@@ -785,9 +787,9 @@ class UsersSuite extends FunSuite {
       assert(response.code === HttpCode.OK.intValue)
       getUserResp = parse(response.body).extract[GetUsersResponse]
       assert(getUserResp.users.size === 1)
-      assert(getUserResp.users.contains(orgid + "/" + iamEmail))
-      u = getUserResp.users(orgid + "/" + iamEmail)
-      assert(u.email === iamEmail)
+      assert(getUserResp.users.contains(orgid + "/" + iamUser))
+      u = getUserResp.users(orgid + "/" + iamUser)
+      assert(u.email === iamUser)
 
       // ensure user does not have admin auth by trying to get other users
       response = Http(URL + "/users/" + user).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
@@ -813,45 +815,48 @@ class UsersSuite extends FunSuite {
       assert(response.code === HttpCode.PUT_OK.intValue)
       */
 
-      // remove created user
-      response = Http(URL + "/users/" + iamEmail).method("delete").headers(ACCEPT).headers(ROOTAUTH).asString
-      info("DELETE " + iamEmail + ", code: " + response.code + ", response.body: " + response.body)
-      assert(response.code === HttpCode.DELETED.intValue || response.code === HttpCode.NOT_FOUND.intValue)
+      // Test a 2nd org associated with the ibm cloud account
+      if (!iamAccountId.isEmpty && !iamOtherKey.isEmpty && !iamOtherAccountId.isEmpty) {
+        // remove created user
+        response = Http(URL + "/users/" + iamUser).method("delete").headers(ACCEPT).headers(ROOTAUTH).asString
+        info("DELETE " + iamUser + ", code: " + response.code + ", response.body: " + response.body)
+        assert(response.code === HttpCode.DELETED.intValue || response.code === HttpCode.NOT_FOUND.intValue)
 
-      /*todo: restore
-      // clear auth cache
-      response = Http(NOORGURL+"/admin/clearauthcaches").method("post").headers(ACCEPT).headers(ROOTAUTH).asString
-      info("CLEAR CACHE code: "+response.code+", response.body: "+response.body)
-      assert(response.code === HttpCode.POST_OK.intValue)
-      */
+        /*todo: restore
+        // clear auth cache
+        response = Http(NOORGURL+"/admin/clearauthcaches").method("post").headers(ACCEPT).headers(ROOTAUTH).asString
+        info("CLEAR CACHE code: "+response.code+", response.body: "+response.body)
+        assert(response.code === HttpCode.POST_OK.intValue)
+        */
 
-      // add ibmcloud_id to different org
-      tagInput = s"""{ "tags": {"ibmcloud_id": "$iamAccount"} }"""
-      response = Http(URL2).postData(tagInput).method("patch").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
-      info("code: " + response.code + ", response.body: " + response.body)
-      assert(response.code === HttpCode.PUT_OK.intValue)
+        // add ibmcloud_id to different org
+        var tagInput = s"""{ "tags": {"ibmcloud_id": "$iamAccountId"} }"""
+        response = Http(URL2).postData(tagInput).method("patch").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+        info("code: " + response.code + ", response.body: " + response.body)
+        assert(response.code === HttpCode.PUT_OK.intValue)
 
-      // authenticating with wrong org should notify user
-      response = Http(URL).headers(ACCEPT).headers(IAMOTHERAUTH(orgid)).asString
-      info("test for api key not part of this org: code: " + response.code + ", response.body: " + response.body)
-      //info("code: "+response.code)
-      assert(response.code === HttpCode.BADCREDS.intValue)
-      val errorMsg = s"IAM authentication succeeded, but the cloud account id of the org $iamAccount does not match that of the cloud account credentials $iamOtherAccount"
-      assert(parse(response.body).extract[Map[String, String]].apply("msg") === errorMsg)
+        // authenticating with wrong org should notify user
+        response = Http(URL).headers(ACCEPT).headers(IAMOTHERAUTH(orgid)).asString
+        info("test for api key not part of this org: code: " + response.code + ", response.body: " + response.body)
+        //info("code: "+response.code)
+        assert(response.code === HttpCode.BADCREDS.intValue)
+        val errorMsg = s"IAM authentication succeeded, but the cloud account id of the org $iamAccountId does not match that of the cloud account credentials $iamOtherAccountId"
+        assert(parse(response.body).extract[Map[String, String]].apply("msg") === errorMsg)
 
-      // remove ibmcloud_id from org
-      tagInput = """{ "tags": {"ibmcloud_id": null} }"""
-      response = Http(URL).postData(tagInput).method("patch").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
-      info("code: " + response.code + ", response.body: " + response.body)
-      assert(response.code === HttpCode.PUT_OK.intValue)
+        // remove ibmcloud_id from org
+        tagInput = """{ "tags": {"ibmcloud_id": null} }"""
+        response = Http(URL).postData(tagInput).method("patch").headers(CONTENT).headers(ACCEPT).headers(ROOTAUTH).asString
+        info("code: " + response.code + ", response.body: " + response.body)
+        assert(response.code === HttpCode.PUT_OK.intValue)
 
-      /*todo: doesn't fail as expected, because we aren't clearing the cache right now
-      response = Http(URL).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
-      info("code: "+response.code)
-      assert(response.code === HttpCode.BADCREDS.intValue)
-      errorMsg = s"IAM authentication succeeded, but no matching exchange org with a cloud account id was found for $orgid"
-      assert(parse(response.body).extract[Map[String, String]].apply("msg") === errorMsg)
-      */
+        /*todo: doesn't fail as expected, because we aren't clearing the cache right now
+        response = Http(URL).headers(ACCEPT).headers(IAMAUTH(orgid)).asString
+        info("code: "+response.code)
+        assert(response.code === HttpCode.BADCREDS.intValue)
+        errorMsg = s"IAM authentication succeeded, but no matching exchange org with a cloud account id was found for $orgid"
+        assert(parse(response.body).extract[Map[String, String]].apply("msg") === errorMsg)
+        */
+      }
 
       /* remove ibmcloud_id from org - do not need to do this, because we delete both orgs at the end
       tagInput = """{ "tags": {"ibmcloud_id": null} }"""

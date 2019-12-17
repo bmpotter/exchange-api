@@ -59,8 +59,7 @@ make gen-key
 ## Building and Running in Local Sandbox
 
 - `sbt`
-- `jetty:start`
-- Or to have the server restart automatically when code changes: `~;jetty:stop;jetty:start`
+- `~reStart`
 - Once the server starts, to try a simple rest method browse: [http://localhost:8080/v1/admin/version](http://localhost:8080/v1/admin/version)
 - To see the swagger output, browse: [http://localhost:8080/api](http://localhost:8080/api)
 - A convenience script `src/test/bash/primedb.sh` can be run to prime the DB with some exchange resources to use in manually testing:
@@ -74,6 +73,16 @@ src/test/bash/primedb.sh
 ```
 export ICP_EXTERNAL_MGMT_INGRESS=<icp-external-host>:8443
 ```
+
+## Tips on Using Sbt
+
+When at the `sbt` sub-command prompt:
+
+- Get a list of tasks: `task -V`
+- Start your app such that it will restart on code changes: `~reStart`
+- Clean all built files (if the incremental build needs to be reset): `clean`
+- Build docker image: `sbt docker:publishLocal`
+- Create just the dockerfile to see its content: `sbt docker:stage`
 
 ## Running the Automated Tests in Local Sandbox
 
@@ -90,6 +99,8 @@ export EXCHANGE_IAM_ACCOUNT=myibmcloudaccountid
 - Make sure to run `primedb.sh` before running the  `AgbotsSuite` test class to run all of the tests.
 
 ## Building and Running the Container
+
+**Todo: this section needs to be updated for akka-http. See: https://www.codemunity.io/tutorials/dockerising-akka-http/**
 
 - Update the version in `src/main/resources.version.txt`
 - To build the build container, compile your local code, build the exchange container, and run it, run: `make` . Or you can do the individual steps:

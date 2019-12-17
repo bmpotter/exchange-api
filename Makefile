@@ -31,13 +31,16 @@ EXCHANGE_API_PORT ?= 8080
 EXCHANGE_API_HTTPS_PORT ?= 8443
 # Location of config.json and icp/ca.crt in the container
 EXCHANGE_CONFIG_DIR ?= /etc/horizon/exchange
+EXCHANGE_ICP_CERT_FILE ?= /etc/horizon/exchange/icp/ca.crt
 OS := $(shell uname)
 ifeq ($(OS),Darwin)
   # Mac OS X
   EXCHANGE_HOST_CONFIG_DIR ?= /private$(EXCHANGE_CONFIG_DIR)/docker
+  EXCHANGE_HOST_ICP_CERT_FILE ?= /private$(EXCHANGE_ICP_CERT_FILE)
 else
   # Assume Linux (could test by test if OS is Linux)
   EXCHANGE_HOST_CONFIG_DIR ?= $(EXCHANGE_CONFIG_DIR)
+  EXCHANGE_HOST_ICP_CERT_FILE ?= $(EXCHANGE_ICP_CERT_FILE)
 endif
 # Location of the ssl key/cert that it should use so it can serve https routes. This need to be fully qualified, so docker can mount it into the container for jetty to access
 EXCHANGE_HOST_KEYSTORE_DIR ?= $(PWD)/keys/etc
@@ -102,15 +105,14 @@ docker: .docker-exec
 	@touch $@
 
 # Start the already built image (w/o building 1st)
-start-docker-exec:
+start-docker-exec: .docker-network
 	@if [[ ! -f "$(EXCHANGE_HOST_KEYSTORE_DIR)/keystore" || ! -f "$(EXCHANGE_HOST_KEYSTORE_DIR)/keypassword" ]]; then echo "Error: keystore and keypassword do not exist in $(EXCHANGE_HOST_KEYSTORE_DIR). You must first copy them there or run 'make gen-key'"; false; fi
 	- docker rm -f $(DOCKER_NAME) 2> /dev/null || :
-	docker run --name $(DOCKER_NAME) --network $(DOCKER_NETWORK) -d -t -p $(EXCHANGE_API_PORT):$(EXCHANGE_API_PORT) -p $(EXCHANGE_API_HTTPS_PORT):$(EXCHANGE_API_HTTPS_PORT) -v $(EXCHANGE_HOST_CONFIG_DIR):$(EXCHANGE_CONFIG_DIR) -v $(EXCHANGE_HOST_KEYSTORE_DIR):$(EXCHANGE_CONTAINER_KEYSTORE_DIR):ro -v $(EXCHANGE_HOST_POSTGRES_CERT_FILE):$(EXCHANGE_CONTAINER_POSTGRES_CERT_FILE) $(image-string):$(DOCKER_TAG)
+	docker run --name $(DOCKER_NAME) --network $(DOCKER_NETWORK) -d -t -p $(EXCHANGE_API_PORT):$(EXCHANGE_API_PORT) -p $(EXCHANGE_API_HTTPS_PORT):$(EXCHANGE_API_HTTPS_PORT) -e "ICP_EXTERNAL_MGMT_INGRESS=$$ICP_EXTERNAL_MGMT_INGRESS" -v $(EXCHANGE_HOST_CONFIG_DIR):$(EXCHANGE_CONFIG_DIR) -v $(EXCHANGE_HOST_ICP_CERT_FILE):$(EXCHANGE_ICP_CERT_FILE) -v $(EXCHANGE_HOST_KEYSTORE_DIR):$(EXCHANGE_CONTAINER_KEYSTORE_DIR):ro -v $(EXCHANGE_HOST_POSTGRES_CERT_FILE):$(EXCHANGE_CONTAINER_POSTGRES_CERT_FILE) $(image-string):$(DOCKER_TAG)
 
-.docker-exec-run-no-https: .docker-exec
+start-docker-exec-no-https: .docker-network
 	- docker rm -f $(DOCKER_NAME) 2> /dev/null || :
 	docker run --name $(DOCKER_NAME) --network $(DOCKER_NETWORK) -d -t -p $(EXCHANGE_API_PORT):$(EXCHANGE_API_PORT) -v $(EXCHANGE_HOST_CONFIG_DIR):$(EXCHANGE_CONFIG_DIR) $(image-string):$(DOCKER_TAG)
-	@touch $@
 
 # Run the automated tests in the bld container against the exchange svr running in the exec container
 test: .docker-bld
