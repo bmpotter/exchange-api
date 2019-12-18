@@ -40,18 +40,12 @@
 			"maxPoolSize": 50,
 			"upgradeTimeoutSeconds": 180
 		},
-		"smtp": {		// set all of these in your own version of this config file
-			"host": "",		// the SMTP relay svr the exchange uses to send reset pw emails
-			"user": "",
-			"password": ""
-		},
 		"logging": {
 			"level": ""		// default level is INFO. For possible values, see http://logback.qos.ch/apidocs/ch/qos/logback/classic/Level.html
 		},
 		"root": {
 			"enabled": true,      // if set to false it will not honor the root credentials
-			"password": "",			// set this in your own version of this config file
-			"email": ""
+			"password": ""			// set this in your own version of this config file
 		},
 		"acls": {
 			"Anonymous": ["RESET_USER_PW"],

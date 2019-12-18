@@ -20,12 +20,11 @@ COMPILE_CLEAN ?= clean
 image-string = $(DOCKER_REGISTRY)/$(ARCH)_exchange-api
 
 # Some of these vars are also used by the Dockerfiles
-JETTY_BASE_VERSION ?= 9.4
 # try to sync this version with the version of scala you have installed on your dev machine, and with what is specified in build.sbt
-SCALA_VERSION ?= 2.12.7
-SCALA_VERSION_SHORT ?= 2.12
+#SCALA_VERSION ?= 2.12.7
+#SCALA_VERSION_SHORT ?= 2.12
 # this version corresponds to the Version variable in project/build.scala
-EXCHANGE_API_WAR_VERSION ?= 0.1.0
+#EXCHANGE_API_WAR_VERSION ?= 0.1.0
 EXCHANGE_API_DIR ?= /src/github.com/open-horizon/exchange-api
 EXCHANGE_API_PORT ?= 8080
 EXCHANGE_API_HTTPS_PORT ?= 8443
@@ -82,24 +81,20 @@ docker: .docker-exec
 	@touch $@
 
 # Using dot files to hold the modification time the docker image and container were built
-.docker-bld: .docker-network
-	docker build -t $(image-string):bld $(DOCKER_OPTS) -f Dockerfile-bld --build-arg SCALA_VERSION=$(SCALA_VERSION) .
-	- docker rm -f $(DOCKER_NAME)_bld 2> /dev/null || :
-	docker run --name $(DOCKER_NAME)_bld --network $(DOCKER_NETWORK) -d -t -v $(CURDIR):$(EXCHANGE_API_DIR) $(image-string):bld /bin/bash
-	@touch $@
+#.docker-bld: .docker-network
+#	docker build -t $(image-string):bld $(DOCKER_OPTS) -f Dockerfile-bld --build-arg SCALA_VERSION=$(SCALA_VERSION) .
+#	- docker rm -f $(DOCKER_NAME)_bld 2> /dev/null || :
+#	docker run --name $(DOCKER_NAME)_bld --network $(DOCKER_NETWORK) -d -t -v $(CURDIR):$(EXCHANGE_API_DIR) $(image-string):bld /bin/bash
+#	@touch $@
 
-.docker-compile: $(wildcard src/main/scala/com/horizon/exchangeapi/*) $(wildcard src/main/resources/*) .docker-bld
-	docker exec -t $(DOCKER_NAME)_bld /bin/bash -c "cd $(EXCHANGE_API_DIR) && sbt package"
-	# war file ends up in: ./target/scala-$SCALA_VERSION_SHORT/exchange-api_$SCALA_VERSION_SHORT-$EXCHANGE_API_WAR_VERSION.war
-	@touch $@
+#.docker-compile: $(wildcard src/main/scala/com/horizon/exchangeapi/*) $(wildcard src/main/resources/*) .docker-bld
+#	docker exec -t $(DOCKER_NAME)_bld /bin/bash -c "cd $(EXCHANGE_API_DIR) && sbt package"
+#	# war file ends up in: ./target/scala-$SCALA_VERSION_SHORT/exchange-api_$SCALA_VERSION_SHORT-$EXCHANGE_API_WAR_VERSION.war
+#	@touch $@
 
-.docker-exec: .docker-compile
-	docker pull jetty:$(JETTY_BASE_VERSION)
-	docker build -t $(image-string):$(DOCKER_TAG) $(DOCKER_OPTS) -f Dockerfile-exec --build-arg JETTY_BASE_VERSION=$(JETTY_BASE_VERSION) --build-arg SCALA_VERSION=$(SCALA_VERSION) --build-arg SCALA_VERSION_SHORT=$(SCALA_VERSION_SHORT) --build-arg EXCHANGE_API_WAR_VERSION=$(EXCHANGE_API_WAR_VERSION) .
+.docker-exec: .docker-network
+	sbt docker:publishLocal
 	@touch $@
-
-# rem-docker-exec:
-# 	- docker rm -f $(DOCKER_NAME) 2> /dev/null || :
 
 .docker-exec-run: .docker-exec start-docker-exec
 	@touch $@
@@ -185,4 +180,4 @@ version:
 
 .SECONDARY:
 
-.PHONY: default clean clean-exec-image clean-all docker test docker-push-only docker-push-version-only docker-push docker-push-to-prod sync-swagger-ui testmake version
+.PHONY: default clean clean-exec-image clean-all start-docker-exec-no-https start-docker-exec docker test docker-push-only docker-push-version-only docker-push docker-push-to-prod gen-key sync-swagger-ui testmake version

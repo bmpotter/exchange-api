@@ -96,7 +96,7 @@ object AuthCache /* extends Control with ServletApiImplicits */ {
     // Get the id of this type from the db, if there
     private def getId(creds: Creds, dbAction: DBIO[Seq[String]], idType: CacheIdType, cacheVal: Option[CacheVal], last: Boolean = false): Try[Option[CacheVal]] = {
       if (cacheVal.isDefined) return Success(cacheVal)
-      logger.debug("CacheId:getId(): " + creds.id + " was not in the cache, so attempting to get it from the db")
+      logger.debug(s"CacheId:getId(): ${creds.id} was not in the cache, so attempting to get it from the $idType db table")
       //val dbAction = NodesTQ.getToken(id).result
       val dbHashedTok: String = try {
         //logger.trace("awaiting for DB query of local exchange creds for "+id+"...")

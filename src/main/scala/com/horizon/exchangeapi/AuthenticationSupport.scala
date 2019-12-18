@@ -24,7 +24,7 @@ import java.util
 /* Used by all routes classes to Authenticates the client credentials and then checks the ACLs for authorization.
 The main authenticate/authorization flow is:
 - an api route calls authenticate() which:
-  - initiates a login with JAAS, giving it ExchCallbackHandler (which gives it access to the api request
+  - initiates a login with JAAS, giving it ExchCallbackHandler (which gives it access to the creds)
     - calls the login() methods of each module listed in resources/jaas.config until 1 doesnt throw an exception
       - in IbmCloudModule.login() it calls IbmCloudAuth.authenticateUser()
       - in Module.login() it calls Identity.authenticate()

@@ -142,11 +142,15 @@ final case class GwTimeoutRejection(apiRespMsg: String) extends ExchangeRejectio
 // Returns a msg from the translated files, with the args substituted
 object ExchMsg {
   def translate(key: String, args: Any*): String = {
-    implicit val userLang = Lang(sys.env.getOrElse("HZN_EXCHANGE_LANG", sys.env.getOrElse("LANG", "en")))
-    if (args.nonEmpty) {
-      return Messages(key, args: _*)
+    try {
+      implicit val userLang = Lang(sys.env.getOrElse("HZN_EXCHANGE_LANG", sys.env.getOrElse("LANG", "en")))
+      if (args.nonEmpty) {
+        return Messages(key, args: _*)
+      }
+      Messages(key)
+    } catch {
+      case e: Exception => s"message key '$key' not found in the messages file: ${e.getMessage}"
     }
-    Messages(key)
   }
 }
 
@@ -246,7 +250,8 @@ object ExchConfig {
       AuthCache.putUser(Role.superUser, rootHashedPw, rootUnhashedPw) // put it in AuthCache even if it does not get successfully written to the db, so we have a chance to fix it
     }
     // Put the root org and user in the db, even if root is disabled (because in that case we want all exchange instances to know the root pw is blank
-    val rootemail = config.getString("api.root.email")
+    //val rootemail = config.getString("api.root.email")
+    val rootemail = ""
     // Create the root org, create the IBM org, and create the root user (all only if necessary)
     db.run(OrgRow("root", "", "Root Org", "Organization for the root user only", ApiTime.nowUTC, None).upsert.asTry.flatMap({ xs =>
       logger.debug("Upsert /orgs/root result: " + xs.toString)

@@ -17,7 +17,7 @@ services in the exchange.
     - `sed -i -e "s/#listen_addresses = 'localhost'/listen_addresses = 'my-ip'/" /usr/local/var/postgres/postgresql.conf`
     - `brew services start postgresql`
     - test: `psql "host=<my-ip> dbname=postgres user=<myuser> password=''"`
-- Add a config file on your development system at /etc/horizon/exchange/config.json with at least the following content (this is needed for the automated tests). Defaults and the full list of config variables are in `src/main/resources/config.json`:
+- Add a config file on your development system at /etc/horizon/exchange/config.json with at least the following content (this is needed for the automated tests. Defaults and the full list of config variables are in `src/main/resources/config.json`):
 
 ```
 {
@@ -27,17 +27,11 @@ services in the exchange.
 			"user": "myuser",
 			"password": ""
 		},
-		"smtp": {
-			"host": "mysmtp.relay.com",	 // the SMTP relay svr the exchange uses to send pw reset emails
-			"user": "myemail@email.net",    // email address
-			"password": "myemailpw"    // email pw
-		},
 		"logging": {
 			"level": "DEBUG"
 		},
 		"root": {
-			"password": "myrootpw",
-			"email": ""
+			"password": "myrootpw"
 		}
 	}
 }
